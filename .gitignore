@@ -35,3 +35,7 @@ next-env.d.ts
 # OS files
 .DS_Store
 Thumbs.db
+
+# Agent prompt files (local only, do not track in git)
+SATELLITE_AGENT_PROMPT.md
+*_AGENT_PROMPT.md
