@@ -1,0 +1,197 @@
+// BitTonik Pay-Hub Prisma Schema
+// Universal Multi-tenant Financial Backbone (Dynamic & Extensible)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum PaymentProvider {
+  STRIPE
+  PAYPAL
+  MONCASH
+}
+
+enum TransactionType {
+  ONE_TIME
+  SUBSCRIPTION
+  DONATION
+  PAYOUT
+}
+
+enum TransactionStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELED
+  REFUNDED
+}
+
+enum SubscriptionStatus {
+  INCOMPLETE
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  UNPAID
+}
+
+enum PayoutChannel {
+  STRIPE
+  PAYPAL
+  MONCASH
+}
+
+enum PayoutStatus {
+  PENDING
+  PROCESSING
+  SUCCEEDED
+  FAILED
+}
+
+enum WebhookDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum WebhookStatus {
+  PENDING
+  DELIVERED
+  FAILED
+}
+
+model Satellite {
+  id          String   @id @default(cuid())
+  code        String   @unique // ex: "PRESSTONIK", "SHOPTONIK", "MEMOTONIK"
+  name        String   // "PressTonik"
+  description String?
+  accentColor String?  @default("#3b82f6") // "#ec4899"
+  logoText    String?  // "PT"
+  logoUrl     String?
+  webhookUrl  String?  // Custom webhook destination URL
+  secretKey   String?  // Custom HMAC signing key (falls back to PAY_HUB_WEBHOOK_SECRET)
+  isActive    Boolean  @default(true)
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([code])
+}
+
+model Customer {
+  id               String         @id @default(cuid())
+  satelliteUserId  String
+  sourceSite       String         // Dynamic string (e.g. "MEMOTONIK", "PRESSTONIK", "SHOPTONIK")
+  email            String
+  name             String?
+  phone            String?
+  stripeCustomerId String?        @unique
+  paypalPayerId    String?
+  moncashPhone     String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  transactions  Transaction[]
+  subscriptions Subscription[]
+  payouts       Payout[]
+
+  @@unique([satelliteUserId, sourceSite])
+  @@index([email])
+  @@index([sourceSite])
+  @@index([stripeCustomerId])
+}
+
+model Transaction {
+  id                String            @id @default(cuid())
+  customerId        String?
+  customer          Customer?         @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  satelliteUserId   String
+  sourceSite        String            // Dynamic string
+  amount            Decimal           @db.Decimal(10, 2)
+  currency          String            @default("USD")
+  status            TransactionStatus @default(PENDING)
+  provider          PaymentProvider
+  type              TransactionType   @default(ONE_TIME)
+  providerPaymentId String?           @unique
+  description       String?
+  returnUrl         String?
+  cancelUrl         String?
+  webhookUrl        String?           // Direct dynamic webhook endpoint for this transaction
+  metadata          Json?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  @@index([satelliteUserId, sourceSite])
+  @@index([sourceSite])
+  @@index([status])
+  @@index([provider])
+}
+
+model Subscription {
+  id                     String             @id @default(cuid())
+  customerId             String
+  customer               Customer           @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  sourceSite             String             @default("MEMOTONIK")
+  planId                 String
+  provider               PaymentProvider    @default(STRIPE)
+  providerSubscriptionId String             @unique
+  status                 SubscriptionStatus @default(INCOMPLETE)
+  webhookUrl             String?
+  currentPeriodStart     DateTime?
+  currentPeriodEnd       DateTime?
+  cancelAtPeriodEnd      Boolean            @default(false)
+  metadata               Json?
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
+
+  @@index([customerId])
+  @@index([sourceSite])
+  @@index([status])
+}
+
+model Payout {
+  id               String        @id @default(cuid())
+  customerId       String?
+  customer         Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  sellerId         String
+  sourceSite       String        @default("SHOPTONIK")
+  amount           Decimal       @db.Decimal(10, 2)
+  currency         String        @default("USD")
+  channel          PayoutChannel
+  destination      String        // Stripe Connect Account ID, PayPal Email, or MonCash Phone number
+  status           PayoutStatus  @default(PENDING)
+  providerPayoutId String?       @unique
+  failureReason    String?
+  metadata         Json?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  @@index([sellerId, sourceSite])
+  @@index([sourceSite])
+  @@index([status])
+  @@index([channel])
+}
+
+model WebhookEvent {
+  id             String           @id @default(cuid())
+  direction      WebhookDirection
+  provider       String?          // STRIPE, PAYPAL, MONCASH or target satellite
+  sourceSite     String?          // Dynamic satellite code
+  eventType      String
+  payload        Json
+  status         WebhookStatus    @default(PENDING)
+  attempts       Int              @default(0)
+  lastError      String?
+  responseStatus Int?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@index([direction, status])
+  @@index([sourceSite])
+  @@index([eventType])
+}
