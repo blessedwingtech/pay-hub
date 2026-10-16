@@ -72,7 +72,7 @@ echo -e "\n${GREEN}✓ Base de données PostgreSQL opérationnelle.${NC}"
 
 # 4. Synchronisation du schéma Prisma (Migrations)
 echo -e "\n${BOLD}[4/6] Synchronisation du schéma Prisma dans PostgreSQL...${NC}"
-$DOCKER_COMPOSE_CMD run --rm payhub-app npx prisma db push --skip-generate || true
+$DOCKER_COMPOSE_CMD exec -T payhub-app npx prisma@5 db push || true
 echo -e "${GREEN}✓ Schéma de base de données à jour.${NC}"
 
 # 5. Construction et démarrage des conteneurs
