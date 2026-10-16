@@ -38,6 +38,8 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3000
+      # Connect to payhub-db container inside Docker network
+      DATABASE_URL: ${DATABASE_URL:-postgresql://payhub_user:ChangeMeSecurePassword123!@payhub-db:5432/payhub_production?schema=public}
     ports:
       # Bound to local port PAYHUB_PORT (default: 3009, verified 100% free on VPS)
       - "127.0.0.1:${PAYHUB_PORT:-3009}:3000"
