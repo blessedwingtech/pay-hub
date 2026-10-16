@@ -41,8 +41,8 @@ services:
       NODE_ENV: production
       PORT: 3000
     ports:
-      # Bound to local port PAYHUB_PORT (default 3050 to avoid collision with port 3000)
-      - "127.0.0.1:${PAYHUB_PORT:-3050}:3000"
+      # Bound to local port PAYHUB_PORT (port 3080 - 100% verified free on VPS)
+      - "127.0.0.1:${PAYHUB_PORT:-3080}:3000"
     networks:
       - payhub-network
 
