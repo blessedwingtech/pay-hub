@@ -21,7 +21,7 @@ services:
       retries: 5
     networks:
       - payhub-network
-    # Port 5432 is intentionally NOT published to host public IP for database security
+    # Port 5432 is strictly internal to avoid conflict with host PostgreSQL
 
   # ========================================================
   # BitTonik Pay-Hub Next.js Application
@@ -41,8 +41,8 @@ services:
       NODE_ENV: production
       PORT: 3000
     ports:
-      # Bound to 127.0.0.1 (local only), traffic routed securely through Nginx
-      - "127.0.0.1:3000:3000"
+      # Bound to local port PAYHUB_PORT (default 3050 to avoid collision with port 3000)
+      - "127.0.0.1:${PAYHUB_PORT:-3050}:3000"
     networks:
       - payhub-network
 

@@ -86,9 +86,10 @@ $DOCKER_COMPOSE_CMD ps
 echo -e "\n${BOLD}[6/6] Vérification du point de terminaison interne...${NC}"
 sleep 5
 
-HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3000/ || true)
+TARGET_PORT="${PAYHUB_PORT:-3050}"
+HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:${TARGET_PORT}/ || true)
 if [ "$HTTP_STATUS" = "200" ] || [ "$HTTP_STATUS" = "307" ] || [ "$HTTP_STATUS" = "308" ]; then
-    echo -e "${GREEN}✓ Pay-Hub répond correctement sur http://127.0.0.1:3000 (HTTP $HTTP_STATUS).${NC}"
+    echo -e "${GREEN}✓ Pay-Hub répond correctement sur http://127.0.0.1:${TARGET_PORT} (HTTP $HTTP_STATUS).${NC}"
 else
     echo -e "${YELLOW}⚠️ Statut HTTP retourné : $HTTP_STATUS (le démarrage peut nécessiter quelques secondes de plus).${NC}"
 fi
