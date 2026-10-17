@@ -74,16 +74,20 @@ export async function createPayPalOrder(params: {
         },
       },
     ],
-    application_context: {
-      brand_name: `BitTonik Pay - ${params.sourceSite}`,
-      locale: "fr-FR",
-      landing_page: "GUEST_CHECKOUT",
-      shipping_preference: "NO_SHIPPING",
-      user_action: "PAY_NOW",
-      return_url: `${params.returnUrl}${
-        params.returnUrl.includes("?") ? "&" : "?"
-      }provider=PAYPAL`,
-      cancel_url: params.cancelUrl || params.returnUrl,
+    payment_source: {
+      paypal: {
+        experience_context: {
+          brand_name: `BitTonik Pay - ${params.sourceSite}`,
+          locale: "fr-FR",
+          landing_page: "GUEST_CHECKOUT",
+          shipping_preference: "NO_SHIPPING",
+          user_action: "PAY_NOW",
+          return_url: `${params.returnUrl}${
+            params.returnUrl.includes("?") ? "&" : "?"
+          }provider=PAYPAL`,
+          cancel_url: params.cancelUrl || params.returnUrl,
+        },
+      },
     },
   };
 
