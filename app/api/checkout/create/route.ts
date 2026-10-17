@@ -4,6 +4,7 @@ import { createStripeCheckoutSession } from "@/lib/stripe";
 import { createPayPalOrder } from "@/lib/paypal";
 import { createMonCashPayment } from "@/lib/moncash";
 import { PaymentProvider, TransactionType } from "@/lib/types";
+import { convertHtgToUsd, convertUsdToHtg } from "@/lib/currency";
 
 export async function POST(req: NextRequest) {
   try {
@@ -137,11 +138,17 @@ export async function POST(req: NextRequest) {
     let checkoutUrl = "";
     let providerPaymentId = "";
 
+    const isHtg = currency.toUpperCase() === "HTG";
+    const intlAmount = isHtg
+      ? Math.max(0.5, await convertHtgToUsd(numAmount))
+      : numAmount;
+    const intlCurrency = isHtg ? "USD" : currency.toUpperCase();
+
     // 1. Stripe Checkout
     if (provider === "STRIPE") {
       const stripeRes = await createStripeCheckoutSession({
-        amount: numAmount,
-        currency,
+        amount: intlAmount,
+        currency: intlCurrency,
         sourceSite,
         type,
         planId,
@@ -165,8 +172,8 @@ export async function POST(req: NextRequest) {
     // 2. PayPal
     else if (provider === "PAYPAL") {
       const paypalRes = await createPayPalOrder({
-        amount: numAmount,
-        currency,
+        amount: intlAmount,
+        currency: intlCurrency,
         sourceSite,
         type,
         description,
@@ -180,8 +187,8 @@ export async function POST(req: NextRequest) {
     }
     // 3. MonCash (Haiti Gourdes)
     else if (provider === "MONCASH") {
-      // Ensure currency is HTG for MonCash
-      const htgAmount = currency.toUpperCase() === "HTG" ? numAmount : numAmount * 132;
+      // Ensure currency is HTG for MonCash using live exchange rate
+      const htgAmount = isHtg ? numAmount : await convertUsdToHtg(numAmount);
       const moncashRes = await createMonCashPayment({
         amount: htgAmount,
         orderId: transaction.id,

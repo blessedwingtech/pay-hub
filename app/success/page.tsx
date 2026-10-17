@@ -7,13 +7,27 @@ import { CheckCircle2, ArrowRight, ShieldCheck, ExternalLink } from "lucide-reac
 function SuccessContent() {
   const searchParams = useSearchParams();
 
-  const sessionId = searchParams.get("session_id") || searchParams.get("order_id") || "tx_confirmed";
+  const sessionId =
+    searchParams.get("session_id") ||
+    searchParams.get("order_id") ||
+    searchParams.get("token") ||
+    "tx_confirmed";
   const provider = searchParams.get("provider") || "STRIPE";
   const returnUrl = searchParams.get("return_url") || "/";
 
   const [countdown, setCountdown] = useState<number>(5);
 
   useEffect(() => {
+    // If returning from PayPal with order token, trigger background capture confirmation
+    const token = searchParams.get("token") || searchParams.get("order_id");
+    if (provider === "PAYPAL" && token) {
+      fetch("/api/checkout/capture", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId: token, provider: "PAYPAL" }),
+      }).catch((e) => console.warn("[Success] Auto-capture ping:", e));
+    }
+
     if (!returnUrl || returnUrl === "/") return;
 
     const timer = setInterval(() => {
@@ -28,7 +42,7 @@ function SuccessContent() {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [returnUrl]);
+  }, [returnUrl, provider, searchParams]);
 
   return (
     <div className="flex-1 flex items-center justify-center py-16 px-4 sm:px-6 lg:px-8">

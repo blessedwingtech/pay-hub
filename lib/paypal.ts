@@ -106,10 +106,16 @@ export async function createPayPalOrder(params: {
   }
 
   const data = await response.json();
-  const approveLink = data.links?.find((link: any) => link.rel === "approve");
+  const approveLink = data.links?.find(
+    (link: any) => link.rel === "approve" || link.rel === "payer-action"
+  );
 
   if (!approveLink || !approveLink.href) {
-    throw new Error("PayPal did not return an approval link");
+    throw new Error(
+      `PayPal did not return an approval link. Received links: ${JSON.stringify(
+        data.links || []
+      )}`
+    );
   }
 
   return {
@@ -138,6 +144,9 @@ export async function capturePayPalOrder(orderId: string): Promise<{
 
   if (!response.ok) {
     const errorText = await response.text();
+    if (errorText.includes("ORDER_ALREADY_CAPTURED")) {
+      return { id: orderId, status: "COMPLETED" };
+    }
     throw new Error(`PayPal Capture Failed (${response.status}): ${errorText}`);
   }
 

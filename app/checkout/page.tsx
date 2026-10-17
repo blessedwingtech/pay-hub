@@ -1,6 +1,6 @@
 "use client";
 
-import React, { Suspense, useState } from "react";
+import React, { Suspense, useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   CreditCard,
@@ -56,11 +56,23 @@ function CheckoutContent() {
   const [selectedProvider, setSelectedProvider] = useState<PaymentProvider>("STRIPE");
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [exchangeRate, setExchangeRate] = useState<number>(131.0);
+
+  useEffect(() => {
+    fetch("/api/currency/rates")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.rate && typeof data.rate === "number") {
+          setExchangeRate(data.rate);
+        }
+      })
+      .catch((e) => console.warn("[Checkout] Rates fetch error:", e));
+  }, []);
 
   const amount = parseFloat(amountParam) || 0;
 
-  // Calculate Haitian Gourde estimate (1 USD ~ 132 HTG)
-  const htgAmount = currencyParam === "HTG" ? amount : Math.round(amount * 132);
+  // Calculate Haitian Gourde estimate using live rate
+  const htgAmount = currencyParam === "HTG" ? amount : Math.round(amount * exchangeRate);
 
   const handleCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
