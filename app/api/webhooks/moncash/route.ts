@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyMonCashPayment } from "@/lib/moncash";
 import { dispatchWebhookToSatellite } from "@/lib/webhook-dispatcher";
+import { settleInvoicePayment } from "@/lib/recurring";
 
 export async function POST(req: NextRequest) {
   try {
@@ -57,6 +58,15 @@ export async function POST(req: NextRequest) {
           status: isSuccess ? "COMPLETED" : "FAILED",
         },
       });
+
+      // Settle invoice if success
+      if (isSuccess && transaction.invoiceId) {
+        await settleInvoicePayment({
+          invoiceId: transaction.invoiceId,
+          provider: "MONCASH",
+          transactionId: updated.id,
+        }).catch((err) => console.error("[MonCash Webhook] Settle invoice error:", err));
+      }
 
       // Dispatch event to satellite
       await dispatchWebhookToSatellite({

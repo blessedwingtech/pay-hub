@@ -235,7 +235,40 @@ Redirigez l'utilisateur vers cette URL pour ouvrir sa session Stripe Billing Cus
 
 ---
 
-## 7. Checklist de Déploiement en Production
+## 7. Gestion des Abonnements & Services Récurrents Dynamiques
+
+Pay-Hub intègre un moteur universel de gestion des contrats et services récurrents (ex: hébergements BWT, abonnements de presse, maintenance, etc.) :
+
+### A. Création dynamique d'un contrat récurrent
+Un satellite ou un administrateur peut enregistrer un contrat récurrent via l'API :
+`POST https://pay.bittonik.com/api/recurring/services`
+
+```json
+{
+  "serviceName": "Hébergement Web Cloud Starter",
+  "sourceSite": "BWT",
+  "clientName": "Junior Pierre",
+  "clientEmail": "junior@example.com",
+  "clientPhone": "+509 3701 2345",
+  "amount": 15.00,
+  "currency": "USD",
+  "billingCycle": "MONTHLY",
+  "gracePeriodDays": 3,
+  "webhookUrl": "https://bwt.bittonik.com/api/webhooks/pay-hub"
+}
+```
+
+### B. Relance WhatsApp 1-Clic (Option A - 100% Gratuite)
+Pour chaque facture d'échéance générée, Pay-Hub fournit un lien WhatsApp direct `wa.me` contenant le texte personnalisé en français avec le montant, la date limite et le lien de paiement direct sécurisé par MonCash, Carte ou PayPal.
+
+### C. Webhooks de Cycle de Vie Récurrent
+- `subscription.renewed` : Renouvellement payé avec succès.
+- `subscription.suspended` : Période de grâce expirée sans paiement (mettre en pause le service).
+- `subscription.reactivated` : Paiement tardif reçu (rétablir le service).
+
+---
+
+## 8. Checklist de Déploiement en Production
 
 - [ ] La variable `NEXT_PUBLIC_PAY_HUB_URL` pointe bien sur `https://pay.bittonik.com`.
 - [ ] La variable `PAY_HUB_WEBHOOK_SECRET` est synchronisée entre Pay-Hub et votre satellite.

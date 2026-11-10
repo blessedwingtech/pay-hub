@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import Link from "next/link";
-import { ShieldCheck, CreditCard, HeartHandshake, UserCircle } from "lucide-react";
+import { ShieldCheck, CreditCard, HeartHandshake, UserCircle, RefreshCw } from "lucide-react";
 
 export const metadata: Metadata = {
   title: "BitTonik Pay-Hub | Hub Financier Universel",
@@ -41,6 +41,13 @@ export default function RootLayout({
               >
                 <CreditCard className="w-4 h-4 text-blue-400" />
                 <span className="hidden md:inline">Checkout Démo</span>
+              </Link>
+              <Link
+                href="/recurring"
+                className="px-3 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-900 transition flex items-center gap-1.5"
+              >
+                <RefreshCw className="w-4 h-4 text-emerald-400" />
+                <span className="hidden md:inline">Abonnements & Services</span>
               </Link>
               <Link
                 href="/donate"

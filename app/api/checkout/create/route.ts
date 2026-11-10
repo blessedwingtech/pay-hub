@@ -50,6 +50,7 @@ export async function POST(req: NextRequest) {
     };
 
     const webhookUrl = body.webhookUrl || body.webhook_url || metadata?.webhookUrl || null;
+    const invoiceId = body.invoiceId || body.invoice_id || metadata?.invoiceId || null;
 
     if (!userId || !email || !amount || !sourceSite || !returnUrl) {
       return NextResponse.json(
@@ -126,7 +127,9 @@ export async function POST(req: NextRequest) {
         returnUrl,
         cancelUrl: cancelUrl || returnUrl,
         webhookUrl: webhookUrl || null,
+        invoiceId: invoiceId || null,
         metadata: {
+          invoiceId: invoiceId || null,
           planId: planId || null,
           webhookUrl: webhookUrl || null,
           siteName: siteName || null,
@@ -161,6 +164,7 @@ export async function POST(req: NextRequest) {
         cancelUrl,
         metadata: {
           transactionId: transaction.id,
+          invoiceId: invoiceId || "",
           sourceSite,
           webhookUrl: webhookUrl || "",
         },

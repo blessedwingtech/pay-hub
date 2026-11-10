@@ -3,6 +3,7 @@ import { stripe } from "@/lib/stripe";
 import { prisma } from "@/lib/prisma";
 import { dispatchWebhookToSatellite } from "@/lib/webhook-dispatcher";
 import { SubscriptionStatus } from "@/lib/types";
+import { settleInvoicePayment } from "@/lib/recurring";
 import Stripe from "stripe";
 
 export async function POST(req: NextRequest) {
@@ -83,6 +84,16 @@ export async function POST(req: NextRequest) {
               providerPaymentId: session.id,
             },
           });
+        }
+
+        // If transaction is linked to an invoice, settle recurring invoice payment
+        const invoiceId = metadata.invoiceId || updatedTransaction?.invoiceId || null;
+        if (invoiceId) {
+          await settleInvoicePayment({
+            invoiceId,
+            provider: "STRIPE",
+            transactionId: updatedTransaction?.id || session.id,
+          }).catch((err) => console.error("[Stripe Webhook] Settle invoice error:", err));
         }
 
         const effectiveWebhookUrl =

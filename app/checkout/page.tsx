@@ -32,6 +32,7 @@ function CheckoutContent() {
   const descriptionParam = searchParams.get("description") || "";
   const returnUrlParam = searchParams.get("return_url") || searchParams.get("returnUrl") || "https://bittonik.com";
   const cancelUrlParam = searchParams.get("cancel_url") || searchParams.get("cancelUrl") || returnUrlParam;
+  const invoiceIdParam = searchParams.get("invoice_id") || searchParams.get("invoiceId") || "";
 
   // Dynamic branding & webhook parameters
   const siteNameParam = searchParams.get("site_name") || searchParams.get("siteName") || "";
@@ -99,6 +100,7 @@ function CheckoutContent() {
           provider: selectedProvider,
           type: typeParam,
           planId: planIdParam,
+          invoiceId: invoiceIdParam || undefined,
           description: descriptionParam || `${siteConfig.displayName} - ${typeParam === "SUBSCRIPTION" ? "Abonnement" : "Achat"}`,
           returnUrl: returnUrlParam,
           cancelUrl: cancelUrlParam,

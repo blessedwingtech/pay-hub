@@ -9,6 +9,9 @@ export type TransactionStatus = "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED
 export type PayoutChannel = "STRIPE" | "PAYPAL" | "MONCASH";
 export type PayoutStatus = "PENDING" | "PROCESSING" | "SUCCEEDED" | "FAILED";
 export type SubscriptionStatus = "INCOMPLETE" | "TRIALING" | "ACTIVE" | "PAST_DUE" | "CANCELED" | "UNPAID";
+export type BillingCycle = "WEEKLY" | "MONTHLY" | "QUARTERLY" | "SEMIANNUAL" | "YEARLY" | "CUSTOM_DAYS";
+export type RecurringContractStatus = "ACTIVE" | "PENDING_RENEWAL" | "GRACE_PERIOD" | "SUSPENDED" | "CANCELLED";
+export type InvoiceStatus = "DRAFT" | "UNPAID" | "PAID" | "OVERDUE" | "CANCELLED";
 
 export interface PayCheckoutParams {
   userId: string;
@@ -67,12 +70,23 @@ export interface PayHubWebhookPayload {
     amount?: number;
     currency?: string;
     status: string;
-    provider: PaymentProvider | PayoutChannel;
+    provider?: PaymentProvider | PayoutChannel | string;
     type?: TransactionType;
     planId?: string;
     payoutId?: string;
     destination?: string;
+    contractId?: string;
+    contractNumber?: string;
+    invoiceId?: string;
+    invoiceNumber?: string;
+    serviceName?: string;
+    clientEmail?: string;
+    clientName?: string;
+    nextDueDate?: string;
+    paidAt?: string;
+    reason?: string;
     metadata?: Record<string, any>;
+    [key: string]: any;
   };
 }
 

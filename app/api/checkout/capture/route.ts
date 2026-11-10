@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { capturePayPalOrder } from "@/lib/paypal";
 import { dispatchWebhookToSatellite } from "@/lib/webhook-dispatcher";
+import { settleInvoicePayment } from "@/lib/recurring";
 
 export async function POST(req: NextRequest) {
   try {
@@ -29,6 +30,15 @@ export async function POST(req: NextRequest) {
           where: { id: transaction.id },
           data: { status: "COMPLETED" },
         });
+
+        // Settle recurring invoice if linked
+        if (transaction.invoiceId) {
+          await settleInvoicePayment({
+            invoiceId: transaction.invoiceId,
+            provider: "PAYPAL",
+            transactionId: updated.id,
+          }).catch((err) => console.error("[Checkout Capture] Settle invoice error:", err));
+        }
 
         // 3. Dispatch webhook to satellite
         await dispatchWebhookToSatellite({

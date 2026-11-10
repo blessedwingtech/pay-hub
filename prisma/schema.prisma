@@ -65,6 +65,31 @@ enum WebhookStatus {
   FAILED
 }
 
+enum BillingCycle {
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  SEMIANNUAL
+  YEARLY
+  CUSTOM_DAYS
+}
+
+enum RecurringContractStatus {
+  ACTIVE
+  PENDING_RENEWAL
+  GRACE_PERIOD
+  SUSPENDED
+  CANCELLED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  UNPAID
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
 model Satellite {
   id          String   @id @default(cuid())
   code        String   @unique // ex: "PRESSTONIK", "SHOPTONIK", "MEMOTONIK"
@@ -96,9 +121,11 @@ model Customer {
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
 
-  transactions  Transaction[]
-  subscriptions Subscription[]
-  payouts       Payout[]
+  transactions       Transaction[]
+  subscriptions      Subscription[]
+  payouts            Payout[]
+  recurringContracts RecurringContract[]
+  invoices           Invoice[]
 
   @@unique([satelliteUserId, sourceSite])
   @@index([email])
@@ -122,6 +149,8 @@ model Transaction {
   returnUrl         String?
   cancelUrl         String?
   webhookUrl        String?           // Direct dynamic webhook endpoint for this transaction
+  invoiceId         String?
+  invoice           Invoice?          @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
   metadata          Json?
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
@@ -130,6 +159,7 @@ model Transaction {
   @@index([sourceSite])
   @@index([status])
   @@index([provider])
+  @@index([invoiceId])
 }
 
 model Subscription {
@@ -194,4 +224,72 @@ model WebhookEvent {
   @@index([direction, status])
   @@index([sourceSite])
   @@index([eventType])
+}
+
+model RecurringContract {
+  id                        String                  @id @default(cuid())
+  contractNumber            String                  @unique // e.g. "CTR-2026-0001"
+  serviceName               String                  // Dynamic! (ex: "Hébergement Web Cloud BWT", "Maintenance de site", "Abonnement VIP")
+  serviceDescription        String?
+  sourceSite                String                  // Dynamic provider / satellite code (ex: "BWT", "PRESSTONIK", "SHOPTONIK", "ACADEMY")
+  providerPayoutDestination String?                 // Compte ou destination pour reversement
+  customerId                String?
+  customer                  Customer?               @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  clientName                String                  // Dynamic! (ex: "Junior Pierre")
+  clientEmail               String
+  clientPhone               String?                 // Pour rappel WhatsApp (Option A) & MonCash
+  amount                    Decimal                 @db.Decimal(10, 2)
+  currency                  String                  @default("USD")
+  billingCycle              BillingCycle            @default(MONTHLY)
+  customDays                Int?
+  startDate                 DateTime                @default(now())
+  nextDueDate               DateTime
+  lastBilledDate            DateTime?
+  status                    RecurringContractStatus @default(ACTIVE)
+  gracePeriodDays           Int                     @default(3)
+  autoDebit                 Boolean                 @default(false)
+  preferredProvider         PaymentProvider?
+  webhookUrl                String?
+  metadata                  Json?
+  invoices                  Invoice[]
+  createdAt                 DateTime                @default(now())
+  updatedAt                 DateTime                @updatedAt
+
+  @@index([sourceSite])
+  @@index([clientEmail])
+  @@index([status])
+  @@index([nextDueDate])
+}
+
+model Invoice {
+  id                 String          @id @default(cuid())
+  invoiceNumber      String          @unique // e.g. "INV-2026-0001"
+  contractId         String?
+  contract           RecurringContract? @relation(fields: [contractId], references: [id], onDelete: SetNull)
+  customerId         String?
+  customer           Customer?       @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  sourceSite         String          // Dynamic provider / satellite code
+  clientName         String
+  clientEmail        String
+  clientPhone        String?
+  serviceName        String
+  description        String?
+  amount             Decimal         @db.Decimal(10, 2)
+  currency           String          @default("USD")
+  dueDate            DateTime
+  status             InvoiceStatus   @default(UNPAID)
+  paidAt             DateTime?
+  paymentProvider    PaymentProvider?
+  transactions       Transaction[]
+  reminderSentCount  Int             @default(0)
+  lastReminderAt     DateTime?
+  whatsappClickCount Int             @default(0)
+  metadata           Json?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  @@index([sourceSite])
+  @@index([clientEmail])
+  @@index([status])
+  @@index([dueDate])
 }

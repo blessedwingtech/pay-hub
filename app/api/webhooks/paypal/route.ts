@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { capturePayPalOrder } from "@/lib/paypal";
 import { dispatchWebhookToSatellite } from "@/lib/webhook-dispatcher";
+import { settleInvoicePayment } from "@/lib/recurring";
 
 export async function POST(req: NextRequest) {
   try {
@@ -39,6 +40,14 @@ export async function POST(req: NextRequest) {
             },
           });
 
+          if (transaction.invoiceId) {
+            await settleInvoicePayment({
+              invoiceId: transaction.invoiceId,
+              provider: "PAYPAL",
+              transactionId: updated.id,
+            }).catch((err) => console.error("[PayPal Webhook] Settle invoice error:", err));
+          }
+
           await dispatchWebhookToSatellite({
             eventType: "payment.completed",
             sourceSite: transaction.sourceSite,
@@ -75,10 +84,18 @@ export async function POST(req: NextRequest) {
         });
 
         if (transaction && transaction.status !== "COMPLETED") {
-          await prisma.transaction.update({
+          const updated = await prisma.transaction.update({
             where: { id: transaction.id },
             data: { status: "COMPLETED" },
           });
+
+          if (transaction.invoiceId) {
+            await settleInvoicePayment({
+              invoiceId: transaction.invoiceId,
+              provider: "PAYPAL",
+              transactionId: updated.id,
+            }).catch((err) => console.error("[PayPal Webhook] Settle invoice error:", err));
+          }
 
           await dispatchWebhookToSatellite({
             eventType: "payment.completed",
