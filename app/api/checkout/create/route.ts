@@ -223,8 +223,33 @@ export async function POST(req: NextRequest) {
     });
   } catch (error: any) {
     console.error("[API checkout/create] Error:", error);
+
+    const errorMessage = String(error?.message || "");
+    const isUnavailable =
+      errorMessage.includes("PROVIDER_UNAVAILABLE") ||
+      errorMessage.includes("API Key") ||
+      errorMessage.includes("Auth Error") ||
+      errorMessage.includes("Authentication") ||
+      errorMessage.includes("credentials") ||
+      errorMessage.includes("invalid_client");
+
+    if (isUnavailable) {
+      return NextResponse.json(
+        {
+          error:
+            "Ce mode de paiement est temporairement indisponible pour maintenance ou mise en service. Veuillez sélectionner une autre option (ex: PayPal, Carte Bancaire ou MonCash) pour compléter votre règlement.",
+          isTemporaryUnavailable: true,
+        },
+        { status: 503 }
+      );
+    }
+
     return NextResponse.json(
-      { error: error?.message || "Erreur interne lors de l'initialisation du paiement" },
+      {
+        error:
+          "Une indisponibilité temporaire est survenue lors de l'initialisation du règlement. Veuillez sélectionner un autre mode de paiement ou réessayer dans un instant.",
+        isTemporaryUnavailable: true,
+      },
       { status: 500 }
     );
   }

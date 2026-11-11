@@ -131,8 +131,8 @@ export const SATELLITE_CONFIGS: Record<string, SatelliteConfig> = {
   },
   BWT: {
     name: "BWT",
-    displayName: "BitTonik World Trust (BWT)",
-    description: "Fonds humanitaire pour l'éducation et la solidarité",
+    displayName: "Blessed Wing Technology (BWT)",
+    description: "Solutions technologiques, hébergement web & développement d'applications",
     accentColor: "#f59e0b",
     logoText: "BWT",
     webhookUrlEnv: "BWT_WEBHOOK_URL",

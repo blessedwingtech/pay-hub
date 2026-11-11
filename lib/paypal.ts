@@ -9,39 +9,58 @@ const PAYPAL_API_BASE =
     ? "https://api-m.paypal.com"
     : "https://api-m.sandbox.paypal.com";
 
+export function isPayPalConfigured(): boolean {
+  return Boolean(
+    clientId &&
+    clientSecret &&
+    !clientId.includes("placeholder") &&
+    !clientSecret.includes("placeholder")
+  );
+}
+
 let cachedToken: { token: string; expiresAt: number } | null = null;
 
 /**
  * Retrieves a valid OAuth2 bearer token from PayPal REST API.
  */
 export async function getPayPalAccessToken(): Promise<string> {
+  if (!isPayPalConfigured()) {
+    throw new Error("PROVIDER_UNAVAILABLE: Le paiement PayPal est temporairement indisponible.");
+  }
+
   const now = Date.now();
   if (cachedToken && cachedToken.expiresAt > now + 60000) {
     return cachedToken.token;
   }
 
-  const authString = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
-  const response = await fetch(`${PAYPAL_API_BASE}/v1/oauth2/token`, {
-    method: "POST",
-    headers: {
-      Authorization: `Basic ${authString}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: "grant_type=client_credentials",
-  });
+  try {
+    const authString = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
+    const response = await fetch(`${PAYPAL_API_BASE}/v1/oauth2/token`, {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${authString}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: "grant_type=client_credentials",
+    });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`PayPal Auth Error (${response.status}): ${errorText}`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[PayPal Auth Error (${response.status})]`, errorText);
+      throw new Error(`PROVIDER_UNAVAILABLE: Erreur d'authentification PayPal (${response.status})`);
+    }
+
+    const data = await response.json();
+    cachedToken = {
+      token: data.access_token,
+      expiresAt: now + data.expires_in * 1000,
+    };
+
+    return data.access_token;
+  } catch (err: any) {
+    console.error("[PayPal getPayPalAccessToken Error]", err?.message || err);
+    throw new Error("PROVIDER_UNAVAILABLE: Le service PayPal est temporairement indisponible.");
   }
-
-  const data = await response.json();
-  cachedToken = {
-    token: data.access_token,
-    expiresAt: now + data.expires_in * 1000,
-  };
-
-  return data.access_token;
 }
 
 /**

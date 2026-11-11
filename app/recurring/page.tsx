@@ -24,7 +24,21 @@ import {
   Eye,
   EyeOff,
   ShieldCheck,
+  Edit2,
+  Trash2,
+  Mail,
+  Send,
+  Share2,
+  Sparkles,
 } from "lucide-react";
+
+interface NotificationBundle {
+  whatsappUrl: string;
+  whatsappText: string;
+  emailSubject: string;
+  emailBody: string;
+  mailtoUrl: string;
+}
 
 interface Contract {
   id: string;
@@ -38,6 +52,7 @@ interface Contract {
   amount: number;
   currency: string;
   billingCycle: string;
+  startDate?: string;
   nextDueDate: string;
   status: "ACTIVE" | "PENDING_RENEWAL" | "GRACE_PERIOD" | "SUSPENDED" | "CANCELLED";
   gracePeriodDays: number;
@@ -49,6 +64,11 @@ interface Contract {
     dueDate: string;
     paymentUrl: string;
     whatsappUrl: string;
+    notifications?: {
+      serviceStart: NotificationBundle;
+      renewalDue: NotificationBundle;
+      gracePeriod: NotificationBundle;
+    };
   } | null;
 }
 
@@ -85,8 +105,8 @@ export default function RecurringServicesPage() {
   const [activeTab, setActiveTab] = useState<"contracts" | "invoices">("contracts");
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  // Modal State
-  const [showModal, setShowModal] = useState(false);
+  // Modal State: Create
+  const [showCreateModal, setShowCreateModal] = useState(false);
   const [creating, setCreating] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -102,6 +122,36 @@ export default function RecurringServicesPage() {
     billingCycle: "MONTHLY",
     gracePeriodDays: "3",
   });
+
+  // Modal State: Edit Contract
+  const [editingContract, setEditingContract] = useState<Contract | null>(null);
+  const [editFormData, setEditFormData] = useState({
+    serviceName: "",
+    serviceDescription: "",
+    clientName: "",
+    clientEmail: "",
+    clientPhone: "",
+    amount: "0",
+    currency: "USD",
+    billingCycle: "MONTHLY",
+    nextDueDate: "",
+    status: "ACTIVE",
+    gracePeriodDays: "3",
+  });
+  const [updating, setUpdating] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
+  // Modal State: Delete Contract
+  const [deletingContract, setDeletingContract] = useState<Contract | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  // Modal State: Communication / Relance
+  const [commModalData, setCommModalData] = useState<{
+    contract: Contract;
+    invoice: any;
+  } | null>(null);
+  const [commType, setCommType] = useState<"serviceStart" | "renewalDue" | "gracePeriod">("serviceStart");
+  const [commChannel, setCommChannel] = useState<"whatsapp" | "email">("whatsapp");
 
   const checkAuth = async () => {
     try {
@@ -198,7 +248,7 @@ export default function RecurringServicesPage() {
         throw new Error(data.error || "Erreur lors de la création du contrat");
       }
 
-      setShowModal(false);
+      setShowCreateModal(false);
       setFormData({
         serviceName: "",
         serviceDescription: "",
@@ -216,6 +266,86 @@ export default function RecurringServicesPage() {
       setFormError(err.message || "Erreur inconnue");
     } finally {
       setCreating(false);
+    }
+  };
+
+  const openEditModal = (contract: Contract) => {
+    setEditingContract(contract);
+    setEditError(null);
+    setEditFormData({
+      serviceName: contract.serviceName,
+      serviceDescription: contract.serviceDescription || "",
+      clientName: contract.clientName,
+      clientEmail: contract.clientEmail,
+      clientPhone: contract.clientPhone || "",
+      amount: String(contract.amount),
+      currency: contract.currency,
+      billingCycle: contract.billingCycle,
+      nextDueDate: contract.nextDueDate ? contract.nextDueDate.slice(0, 10) : "",
+      status: contract.status,
+      gracePeriodDays: String(contract.gracePeriodDays || 3),
+    });
+  };
+
+  const handleUpdateContract = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingContract) return;
+    setUpdating(true);
+    setEditError(null);
+
+    try {
+      const res = await fetch("/api/recurring/services", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: editingContract.id,
+          serviceName: editFormData.serviceName,
+          serviceDescription: editFormData.serviceDescription,
+          clientName: editFormData.clientName,
+          clientEmail: editFormData.clientEmail,
+          clientPhone: editFormData.clientPhone || null,
+          amount: parseFloat(editFormData.amount),
+          currency: editFormData.currency,
+          billingCycle: editFormData.billingCycle,
+          nextDueDate: editFormData.nextDueDate,
+          status: editFormData.status,
+          gracePeriodDays: parseInt(editFormData.gracePeriodDays, 10),
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Erreur lors de la mise à jour");
+      }
+
+      setEditingContract(null);
+      fetchData();
+    } catch (err: any) {
+      setEditError(err.message || "Erreur inconnue");
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleDeleteContract = async () => {
+    if (!deletingContract) return;
+    setDeleting(true);
+
+    try {
+      const res = await fetch(`/api/recurring/services?id=${deletingContract.id}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Erreur lors de la suppression");
+      }
+
+      setDeletingContract(null);
+      fetchData();
+    } catch (err: any) {
+      alert(err.message || "Impossible de supprimer ce contrat");
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -237,6 +367,20 @@ export default function RecurringServicesPage() {
     }
   };
 
+  const openCommModal = (contract: Contract, defaultType?: "serviceStart" | "renewalDue" | "gracePeriod") => {
+    if (!contract.latestUnpaidInvoice) {
+      handleGenerateInvoice(contract.id);
+      return;
+    }
+    setCommModalData({
+      contract,
+      invoice: contract.latestUnpaidInvoice,
+    });
+    setCommType(
+      defaultType || (contract.status === "GRACE_PERIOD" ? "gracePeriod" : "serviceStart")
+    );
+  };
+
   const copyToClipboard = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
     setCopiedId(id);
@@ -248,53 +392,56 @@ export default function RecurringServicesPage() {
       case "ACTIVE":
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-950 text-emerald-400 border border-emerald-800">
-            <CheckCircle2 className="w-3.5 h-3.5" /> Actif
+            <CheckCircle2 className="w-3 h-3" />
+            Actif
           </span>
         );
       case "PENDING_RENEWAL":
         return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-950 text-amber-400 border border-amber-800">
-            <Clock className="w-3.5 h-3.5" /> À renouveler
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-950 text-blue-400 border border-blue-800">
+            <Clock className="w-3 h-3" />À renouveler
           </span>
         );
       case "GRACE_PERIOD":
         return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-orange-950 text-orange-400 border border-orange-800 animate-pulse">
-            <AlertTriangle className="w-3.5 h-3.5" /> Période de grâce
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-950 text-amber-400 border border-amber-800">
+            <AlertTriangle className="w-3 h-3" />
+            Grâce
           </span>
         );
       case "SUSPENDED":
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-950 text-rose-400 border border-rose-800">
-            <ShieldAlert className="w-3.5 h-3.5" /> Suspendu
+            <XCircle className="w-3 h-3" />
+            Suspendu
           </span>
         );
       case "CANCELLED":
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-900 text-slate-400 border border-slate-800">
-            <XCircle className="w-3.5 h-3.5" /> Résilié
+            Annulé
           </span>
         );
       case "PAID":
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-950 text-emerald-400 border border-emerald-800">
-            <Check className="w-3.5 h-3.5" /> Payée
+            <CheckCircle2 className="w-3 h-3" />
+            Réglée
           </span>
         );
       case "UNPAID":
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-950 text-amber-400 border border-amber-800">
-            <Clock className="w-3.5 h-3.5" /> En attente
-          </span>
-        );
-      case "OVERDUE":
-        return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-950 text-rose-400 border border-rose-800">
-            <AlertTriangle className="w-3.5 h-3.5" /> En retard
+            <Clock className="w-3 h-3" />
+            En attente
           </span>
         );
       default:
-        return <span className="text-xs text-slate-400">{status}</span>;
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-900 text-slate-400 border border-slate-800">
+            {status}
+          </span>
+        );
     }
   };
 
@@ -303,36 +450,24 @@ export default function RecurringServicesPage() {
       c.clientName.toLowerCase().includes(search.toLowerCase()) ||
       c.clientEmail.toLowerCase().includes(search.toLowerCase()) ||
       c.serviceName.toLowerCase().includes(search.toLowerCase()) ||
-      c.sourceSite.toLowerCase().includes(search.toLowerCase()) ||
       c.contractNumber.toLowerCase().includes(search.toLowerCase());
 
     const matchesStatus = filterStatus === "ALL" || c.status === filterStatus;
     return matchesSearch && matchesStatus;
   });
 
-  if (isAuthenticated === null) {
+  // Lock Screen if not authenticated
+  if (isAuthenticated === false) {
     return (
-      <div className="flex-1 flex items-center justify-center p-16">
-        <div className="text-center space-y-3">
-          <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
-          <p className="text-xs text-slate-400">Vérification des droits d&apos;accès...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!isAuthenticated) {
-    return (
-      <div className="flex-1 flex items-center justify-center py-16 px-4 sm:px-6 lg:px-8">
-        <div className="glass-panel p-8 sm:p-10 rounded-3xl border border-slate-800 max-w-md w-full space-y-6 shadow-2xl">
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center mx-auto shadow-lg shadow-blue-500/20">
-            <Lock className="w-8 h-8" />
-          </div>
-
+      <div className="py-20 px-4 sm:px-6 lg:px-8 max-w-md mx-auto w-full flex flex-col items-center justify-center min-h-[70vh]">
+        <div className="glass-panel p-8 rounded-3xl border border-slate-800 w-full space-y-6 shadow-2xl">
           <div className="text-center space-y-2">
-            <h2 className="text-2xl font-extrabold text-white">Espace Administration</h2>
+            <div className="w-14 h-14 rounded-2xl bg-blue-600/10 border border-blue-500/20 text-blue-400 flex items-center justify-center mx-auto shadow-inner">
+              <Lock className="w-7 h-7" />
+            </div>
+            <h2 className="text-2xl font-black text-white">Espace Administrateur</h2>
             <p className="text-xs text-slate-400">
-              Veuillez saisir votre clé <code className="text-blue-400">PAYHUB_ADMIN_KEY</code> pour gérer les contrats, hébergements et relances.
+              Veuillez saisir votre clé d&apos;administration Pay-Hub pour gérer les contrats et relances.
             </p>
           </div>
 
@@ -403,7 +538,7 @@ export default function RecurringServicesPage() {
             </span>
           </h1>
           <p className="text-slate-400 text-sm mt-1">
-            Gestion universelle des contrats récurrents, hébergements BWT, abonnements et relances WhatsApp 1-clic.
+            Gestion des contrats, hébergements Blessed Wing Technology (BWT), modifications & relances 1-clic.
           </p>
         </div>
 
@@ -417,7 +552,7 @@ export default function RecurringServicesPage() {
             <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
           </button>
           <button
-            onClick={() => setShowModal(true)}
+            onClick={() => setShowCreateModal(true)}
             className="px-4 py-2.5 rounded-xl font-bold text-white bg-blue-600 hover:bg-blue-700 transition shadow-lg shadow-blue-500/20 flex items-center gap-2 text-sm"
           >
             <PlusCircle className="w-4 h-4" />
@@ -468,24 +603,24 @@ export default function RecurringServicesPage() {
         </div>
       </div>
 
-      {/* Controls: Search, Tabs & Filters */}
+      {/* Navigation Tabs & Search Controls */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-        <div className="flex items-center gap-2 bg-slate-900/80 p-1 rounded-xl border border-slate-800 w-full sm:w-auto">
+        <div className="flex p-1 rounded-2xl bg-slate-900 border border-slate-800 w-full sm:w-auto">
           <button
             onClick={() => setActiveTab("contracts")}
-            className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${
+            className={`px-5 py-2 rounded-xl text-sm font-semibold transition ${
               activeTab === "contracts"
-                ? "bg-blue-600 text-white shadow"
+                ? "bg-blue-600 text-white shadow-md shadow-blue-500/20"
                 : "text-slate-400 hover:text-white"
             }`}
           >
-            Contrats ({contracts.length})
+            Services & Contrats ({contracts.length})
           </button>
           <button
             onClick={() => setActiveTab("invoices")}
-            className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${
+            className={`px-5 py-2 rounded-xl text-sm font-semibold transition ${
               activeTab === "invoices"
-                ? "bg-blue-600 text-white shadow"
+                ? "bg-blue-600 text-white shadow-md shadow-blue-500/20"
                 : "text-slate-400 hover:text-white"
             }`}
           >
@@ -529,7 +664,7 @@ export default function RecurringServicesPage() {
               <Calendar className="w-12 h-12 text-slate-600 mx-auto" />
               <div className="text-base font-semibold text-slate-300">Aucun contrat trouvé</div>
               <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                Créez votre premier contrat de service (ex: Hébergement web Junior chez BWT) en cliquant sur &quot;Nouveau Service&quot;.
+                Créez votre premier contrat de service (ex: Hébergement Blessed Wing Technology) en cliquant sur &quot;Nouveau Service&quot;.
               </p>
             </div>
           ) : (
@@ -543,7 +678,7 @@ export default function RecurringServicesPage() {
                     <th className="py-3.5 px-4">Tarif & Cycle</th>
                     <th className="py-3.5 px-4">Prochaine Échéance</th>
                     <th className="py-3.5 px-4">Statut</th>
-                    <th className="py-3.5 px-4 text-right">Actions Relance</th>
+                    <th className="py-3.5 px-4 text-right">Actions & Gestion</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60 text-slate-300">
@@ -594,31 +729,18 @@ export default function RecurringServicesPage() {
                       <td className="py-4 px-4">{getStatusBadge(contract.status)}</td>
 
                       <td className="py-4 px-4 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          {/* Option A: 1-Click WhatsApp Button */}
-                          {contract.latestUnpaidInvoice?.whatsappUrl ? (
-                            <a
-                              href={contract.latestUnpaidInvoice.whatsappUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="px-3 py-1.5 rounded-lg font-semibold text-xs text-emerald-300 bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-700/60 transition flex items-center gap-1.5 shadow"
-                              title="Ouvrir WhatsApp avec message prérempli et lien de paiement"
-                            >
-                              <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />
-                              <span>Relancer WhatsApp</span>
-                            </a>
-                          ) : (
-                            <button
-                              onClick={() => handleGenerateInvoice(contract.id)}
-                              className="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-300 bg-slate-900 hover:bg-slate-800 border border-slate-700 transition flex items-center gap-1"
-                              title="Générer une facture pour activer le lien de paiement"
-                            >
-                              <FileText className="w-3.5 h-3.5 text-blue-400" />
-                              <span>Créer Facture</span>
-                            </button>
-                          )}
+                        <div className="flex items-center justify-end gap-1.5">
+                          {/* Communication Button (WhatsApp / Email / Link) */}
+                          <button
+                            onClick={() => openCommModal(contract)}
+                            className="px-2.5 py-1.5 rounded-lg font-semibold text-xs text-emerald-300 bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-700/60 transition flex items-center gap-1.5 shadow"
+                            title="Ouvrir les options de communication client (Début de service, Rappel, Email, WhatsApp)"
+                          >
+                            <Share2 className="w-3.5 h-3.5 text-emerald-400" />
+                            <span>Contacter</span>
+                          </button>
 
-                          {/* Copy Payment Link */}
+                          {/* Quick Copy Link */}
                           {contract.latestUnpaidInvoice?.paymentUrl && (
                             <button
                               onClick={() =>
@@ -628,7 +750,7 @@ export default function RecurringServicesPage() {
                                 )
                               }
                               className="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-400 hover:text-white transition"
-                              title="Copier le lien direct de paiement Pay-Hub"
+                              title="Copier le lien direct de paiement"
                             >
                               {copiedId === contract.id ? (
                                 <Check className="w-3.5 h-3.5 text-emerald-400" />
@@ -637,6 +759,24 @@ export default function RecurringServicesPage() {
                               )}
                             </button>
                           )}
+
+                          {/* Edit Button */}
+                          <button
+                            onClick={() => openEditModal(contract)}
+                            className="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-400 hover:text-blue-400 transition"
+                            title="Modifier ce service / contrat"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+
+                          {/* Delete Button */}
+                          <button
+                            onClick={() => setDeletingContract(contract)}
+                            className="p-1.5 rounded-lg bg-slate-900 hover:bg-rose-950/60 border border-slate-800 hover:border-rose-800 text-slate-400 hover:text-rose-400 transition"
+                            title="Supprimer ce service"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -713,7 +853,7 @@ export default function RecurringServicesPage() {
                               target="_blank"
                               rel="noopener noreferrer"
                               className="px-2.5 py-1 rounded-lg text-xs font-semibold text-emerald-300 bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-700/60 transition flex items-center gap-1 shadow"
-                              title="Option A: WhatsApp Click-to-Chat (0$ coût)"
+                              title="WhatsApp Click-to-Chat direct"
                             >
                               <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />
                               <span>WhatsApp</span>
@@ -752,19 +892,524 @@ export default function RecurringServicesPage() {
         </div>
       )}
 
+      {/* Modal: Communication Client (WhatsApp, Email, Copie de message) */}
+      {commModalData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-slate-800 max-w-2xl w-full space-y-6 shadow-2xl relative max-h-[92vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+              <div>
+                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                  <Share2 className="w-5 h-5 text-emerald-400" />
+                  <span>Communication Client</span>
+                </h3>
+                <p className="text-xs text-slate-400">
+                  {commModalData.contract.serviceName} • {commModalData.contract.clientName} (Facture {commModalData.invoice.invoiceNumber})
+                </p>
+              </div>
+              <button
+                onClick={() => setCommModalData(null)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg text-lg"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Type de message selector */}
+            <div className="space-y-1.5">
+              <label className="block text-xs font-semibold text-slate-300">
+                Type de message à transmettre :
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCommType("serviceStart")}
+                  className={`p-3 rounded-xl border text-left transition ${
+                    commType === "serviceStart"
+                      ? "border-blue-500 bg-blue-950/40 text-white"
+                      : "border-slate-800 bg-slate-900/60 text-slate-400 hover:border-slate-700"
+                  }`}
+                >
+                  <div className="font-bold text-xs text-blue-400 flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Début de Service</span>
+                  </div>
+                  <div className="text-[11px] text-slate-400 mt-1">
+                    Activation & facture initiale (ex: nouvel hébergement)
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setCommType("renewalDue")}
+                  className={`p-3 rounded-xl border text-left transition ${
+                    commType === "renewalDue"
+                      ? "border-emerald-500 bg-emerald-950/40 text-white"
+                      : "border-slate-800 bg-slate-900/60 text-slate-400 hover:border-slate-700"
+                  }`}
+                >
+                  <div className="font-bold text-xs text-emerald-400 flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5" />
+                    <span>Rappel d&apos;Échéance</span>
+                  </div>
+                  <div className="text-[11px] text-slate-400 mt-1">
+                    Renouvellement standard avant la date limite
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setCommType("gracePeriod")}
+                  className={`p-3 rounded-xl border text-left transition ${
+                    commType === "gracePeriod"
+                      ? "border-amber-500 bg-amber-950/40 text-white"
+                      : "border-slate-800 bg-slate-900/60 text-slate-400 hover:border-slate-700"
+                  }`}
+                >
+                  <div className="font-bold text-xs text-amber-400 flex items-center gap-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    <span>Dernier Rappel</span>
+                  </div>
+                  <div className="text-[11px] text-slate-400 mt-1">
+                    Période de grâce / Alerte avant suspension
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            {/* Canal de diffusion (WhatsApp vs Email) */}
+            <div className="flex p-1 rounded-xl bg-slate-900 border border-slate-800">
+              <button
+                type="button"
+                onClick={() => setCommChannel("whatsapp")}
+                className={`flex-1 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2 ${
+                  commChannel === "whatsapp"
+                    ? "bg-emerald-600 text-white shadow"
+                    : "text-slate-400 hover:text-white"
+                }`}
+              >
+                <MessageCircle className="w-3.5 h-3.5" />
+                <span>WhatsApp (Option A)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setCommChannel("email")}
+                className={`flex-1 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2 ${
+                  commChannel === "email"
+                    ? "bg-blue-600 text-white shadow"
+                    : "text-slate-400 hover:text-white"
+                }`}
+              >
+                <Mail className="w-3.5 h-3.5" />
+                <span>Email Professionnel</span>
+              </button>
+            </div>
+
+            {/* Message Preview Box */}
+            {(() => {
+              const notifs = commModalData.invoice.notifications;
+              const activeNotif: NotificationBundle = notifs ? notifs[commType] : null;
+
+              if (commChannel === "whatsapp") {
+                return (
+                  <div className="space-y-4">
+                    <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 text-xs font-mono text-slate-300 whitespace-pre-wrap leading-relaxed max-h-60 overflow-y-auto">
+                      {activeNotif?.whatsappText || "Génération du texte en cours..."}
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-end gap-3 pt-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          copyToClipboard(
+                            activeNotif?.whatsappText || "",
+                            "modal-wa-text"
+                          )
+                        }
+                        className="px-4 py-2.5 rounded-xl border border-slate-700 hover:bg-slate-800 text-slate-300 text-xs font-semibold flex items-center gap-2"
+                      >
+                        {copiedId === "modal-wa-text" ? (
+                          <>
+                            <Check className="w-3.5 h-3.5 text-emerald-400" />
+                            <span>Copié !</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3.5 h-3.5" />
+                            <span>Copier le texte</span>
+                          </>
+                        )}
+                      </button>
+
+                      {activeNotif?.whatsappUrl && (
+                        <a
+                          href={activeNotif.whatsappUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-5 py-2.5 rounded-xl font-bold text-white bg-emerald-600 hover:bg-emerald-700 transition shadow-lg shadow-emerald-500/20 text-xs flex items-center gap-2"
+                        >
+                          <Send className="w-3.5 h-3.5" />
+                          <span>Ouvrir WhatsApp</span>
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                );
+              } else {
+                return (
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <div className="text-[11px] font-semibold text-slate-400">Objet de l&apos;email :</div>
+                      <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white font-medium">
+                        {activeNotif?.emailSubject || ""}
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="text-[11px] font-semibold text-slate-400">Corps de l&apos;email :</div>
+                      <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 text-xs font-mono text-slate-300 whitespace-pre-wrap leading-relaxed max-h-52 overflow-y-auto">
+                        {activeNotif?.emailBody || ""}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-end gap-3 pt-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          copyToClipboard(
+                            `Objet : ${activeNotif?.emailSubject}\n\n${activeNotif?.emailBody}`,
+                            "modal-email-text"
+                          )
+                        }
+                        className="px-4 py-2.5 rounded-xl border border-slate-700 hover:bg-slate-800 text-slate-300 text-xs font-semibold flex items-center gap-2"
+                      >
+                        {copiedId === "modal-email-text" ? (
+                          <>
+                            <Check className="w-3.5 h-3.5 text-emerald-400" />
+                            <span>Email copié !</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3.5 h-3.5" />
+                            <span>Copier l&apos;email</span>
+                          </>
+                        )}
+                      </button>
+
+                      {activeNotif?.mailtoUrl && (
+                        <a
+                          href={activeNotif.mailtoUrl}
+                          className="px-5 py-2.5 rounded-xl font-bold text-white bg-blue-600 hover:bg-blue-700 transition shadow-lg shadow-blue-500/20 text-xs flex items-center gap-2"
+                        >
+                          <Mail className="w-3.5 h-3.5" />
+                          <span>Ouvrir dans Messagerie</span>
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                );
+              }
+            })()}
+
+            {/* Direct Link Section */}
+            <div className="pt-4 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+              <span className="truncate max-w-xs">{commModalData.invoice.paymentUrl}</span>
+              <button
+                type="button"
+                onClick={() =>
+                  copyToClipboard(commModalData.invoice.paymentUrl, "modal-link")
+                }
+                className="text-blue-400 hover:text-blue-300 font-semibold flex items-center gap-1 shrink-0"
+              >
+                {copiedId === "modal-link" ? "Lien copié !" : "Copier le lien direct"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Edit Service / Contract */}
+      {editingContract && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-slate-800 max-w-lg w-full space-y-6 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+              <div>
+                <h3 className="text-lg font-bold text-white">Modifier le Service</h3>
+                <p className="text-xs text-slate-400">
+                  {editingContract.contractNumber} • {editingContract.sourceSite}
+                </p>
+              </div>
+              <button
+                onClick={() => setEditingContract(null)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg"
+              >
+                ✕
+              </button>
+            </div>
+
+            {editError && (
+              <div className="p-3.5 rounded-xl bg-rose-950/80 border border-rose-800 text-rose-200 text-xs">
+                {editError}
+              </div>
+            )}
+
+            <form onSubmit={handleUpdateContract} className="space-y-4 text-sm">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Nom du Service
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editFormData.serviceName}
+                  onChange={(e) =>
+                    setEditFormData({ ...editFormData, serviceName: e.target.value })
+                  }
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-white text-sm focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Tarif Récurrent
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={editFormData.amount}
+                    onChange={(e) =>
+                      setEditFormData({ ...editFormData, amount: e.target.value })
+                    }
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-white text-sm focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Devise</label>
+                  <select
+                    value={editFormData.currency}
+                    onChange={(e) =>
+                      setEditFormData({ ...editFormData, currency: e.target.value })
+                    }
+                    className="w-full px-3 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-white text-sm focus:outline-none focus:border-blue-500"
+                  >
+                    <option value="USD">USD ($)</option>
+                    <option value="HTG">HTG (Gourdes)</option>
+                    <option value="EUR">EUR (€)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Cycle de Facturation
+                  </label>
+                  <select
+                    value={editFormData.billingCycle}
+                    onChange={(e) =>
+                      setEditFormData({ ...editFormData, billingCycle: e.target.value })
+                    }
+                    className="w-full px-3 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-white text-sm focus:outline-none focus:border-blue-500"
+                  >
+                    <option value="MONTHLY">Mensuel (1 mois)</option>
+                    <option value="QUARTERLY">Trimestriel (3 mois)</option>
+                    <option value="SEMIANNUAL">Semestriel (6 mois)</option>
+                    <option value="YEARLY">Annuel (1 an)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Statut du Service
+                  </label>
+                  <select
+                    value={editFormData.status}
+                    onChange={(e) =>
+                      setEditFormData({ ...editFormData, status: e.target.value })
+                    }
+                    className="w-full px-3 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-white text-sm focus:outline-none focus:border-blue-500"
+                  >
+                    <option value="ACTIVE">Actif</option>
+                    <option value="PENDING_RENEWAL">À renouveler</option>
+                    <option value="GRACE_PERIOD">Période de grâce</option>
+                    <option value="SUSPENDED">Suspendu</option>
+                    <option value="CANCELLED">Annulé</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Prochaine Échéance
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={editFormData.nextDueDate}
+                    onChange={(e) =>
+                      setEditFormData({ ...editFormData, nextDueDate: e.target.value })
+                    }
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-white text-sm focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Jours de Grâce
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={editFormData.gracePeriodDays}
+                    onChange={(e) =>
+                      setEditFormData({ ...editFormData, gracePeriodDays: e.target.value })
+                    }
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-white text-sm focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div className="border-t border-slate-800/80 pt-3 space-y-3">
+                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                  Client Associé
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Nom du Client
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editFormData.clientName}
+                    onChange={(e) =>
+                      setEditFormData({ ...editFormData, clientName: e.target.value })
+                    }
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-white text-sm focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">Email</label>
+                    <input
+                      type="email"
+                      required
+                      value={editFormData.clientEmail}
+                      onChange={(e) =>
+                        setEditFormData({ ...editFormData, clientEmail: e.target.value })
+                      }
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-white text-sm focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">
+                      Téléphone
+                    </label>
+                    <input
+                      type="tel"
+                      value={editFormData.clientPhone}
+                      onChange={(e) =>
+                        setEditFormData({ ...editFormData, clientPhone: e.target.value })
+                      }
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-white text-sm focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setEditingContract(null)}
+                  className="px-4 py-2.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-900 transition text-sm"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  disabled={updating}
+                  className="px-5 py-2.5 rounded-xl font-bold text-white bg-blue-600 hover:bg-blue-700 transition shadow-lg shadow-blue-500/20 disabled:opacity-50 text-sm flex items-center gap-2"
+                >
+                  {updating ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      <span>Enregistrement...</span>
+                    </>
+                  ) : (
+                    <span>Sauvegarder les modifications</span>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Delete Confirmation */}
+      {deletingContract && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-rose-900/50 max-w-md w-full space-y-5 shadow-2xl relative">
+            <div className="w-12 h-12 rounded-2xl bg-rose-600/10 border border-rose-500/20 text-rose-400 flex items-center justify-center mx-auto">
+              <Trash2 className="w-6 h-6" />
+            </div>
+
+            <div className="text-center space-y-2">
+              <h3 className="text-lg font-bold text-white">Supprimer ce Service ?</h3>
+              <p className="text-xs text-slate-300 leading-relaxed">
+                Êtes-vous sûr de vouloir supprimer définitivement le service{" "}
+                <strong className="text-white">{deletingContract.serviceName}</strong> (Contrat{" "}
+                <code className="text-blue-400">{deletingContract.contractNumber}</code>) ?
+                <br />
+                Les factures impayées rattachées seront également supprimées.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeletingContract(null)}
+                className="px-4 py-2.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-900 transition text-xs font-semibold"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteContract}
+                disabled={deleting}
+                className="px-5 py-2.5 rounded-xl font-bold text-white bg-rose-600 hover:bg-rose-700 transition shadow-lg shadow-rose-600/20 text-xs flex items-center gap-2 disabled:opacity-50"
+              >
+                {deleting ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    <span>Suppression...</span>
+                  </>
+                ) : (
+                  <span>Confirmer la suppression</span>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal: Create Recurring Contract */}
-      {showModal && (
+      {showCreateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-slate-800 max-w-lg w-full space-y-6 shadow-2xl relative max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-800 pb-4">
               <div>
                 <h3 className="text-lg font-bold text-white">Nouveau Contrat de Service</h3>
                 <p className="text-xs text-slate-400">
-                  Création dynamique d&apos;abonnement récurrent (Hébergement BWT, PressTonik, etc.)
+                  Création d&apos;un service récurrent (Hébergement BWT, PressTonik, etc.) avec facture initiale
                 </p>
               </div>
               <button
-                onClick={() => setShowModal(false)}
+                onClick={() => setShowCreateModal(false)}
                 className="text-slate-400 hover:text-white p-1 rounded-lg"
               >
                 ✕
@@ -780,14 +1425,14 @@ export default function RecurringServicesPage() {
             <form onSubmit={handleCreateContract} className="space-y-4 text-sm">
               <div>
                 <label className="block text-xs font-semibold text-slate-300 mb-1">
-                  Nom du Service * (ex: Hébergement Web Pro, Maintenance Annuelle)
+                  Nom du Service * (ex: Hébergement Web UCS, Maintenance Pro)
                 </label>
                 <input
                   type="text"
                   required
                   value={formData.serviceName}
                   onChange={(e) => setFormData({ ...formData, serviceName: e.target.value })}
-                  placeholder="Ex: Hébergement BWT Cloud Starter"
+                  placeholder="Ex: Hébergement Blessed Wing Technology"
                   className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-white placeholder-slate-500 text-sm focus:outline-none focus:border-blue-500"
                 />
               </div>
@@ -802,7 +1447,7 @@ export default function RecurringServicesPage() {
                     onChange={(e) => setFormData({ ...formData, sourceSite: e.target.value })}
                     className="w-full px-3 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-white text-sm focus:outline-none focus:border-blue-500"
                   >
-                    <option value="BWT">BWT (Hébergement & Projets)</option>
+                    <option value="BWT">Blessed Wing Technology (BWT)</option>
                     <option value="PRESSTONIK">PressTonik</option>
                     <option value="SHOPTONIK">ShopTonik</option>
                     <option value="ACADEMY">BitTonik Academy</option>
@@ -871,7 +1516,7 @@ export default function RecurringServicesPage() {
                     required
                     value={formData.clientName}
                     onChange={(e) => setFormData({ ...formData, clientName: e.target.value })}
-                    placeholder="Ex: Junior Pierre"
+                    placeholder="Ex: Junior Pierre / Entreprise"
                     className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-white placeholder-slate-500 text-sm focus:outline-none focus:border-blue-500"
                   />
                 </div>
@@ -884,7 +1529,7 @@ export default function RecurringServicesPage() {
                       required
                       value={formData.clientEmail}
                       onChange={(e) => setFormData({ ...formData, clientEmail: e.target.value })}
-                      placeholder="junior@exemple.com"
+                      placeholder="client@domaine.com"
                       className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-white placeholder-slate-500 text-sm focus:outline-none focus:border-blue-500"
                     />
                   </div>
@@ -907,7 +1552,7 @@ export default function RecurringServicesPage() {
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
                 <button
                   type="button"
-                  onClick={() => setShowModal(false)}
+                  onClick={() => setShowCreateModal(false)}
                   className="px-4 py-2.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-900 transition text-sm"
                 >
                   Annuler
@@ -923,7 +1568,7 @@ export default function RecurringServicesPage() {
                       <span>Enregistrement...</span>
                     </>
                   ) : (
-                    <span>Créer le Contrat</span>
+                    <span>Créer le Contrat & la Facture</span>
                   )}
                 </button>
               </div>

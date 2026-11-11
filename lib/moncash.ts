@@ -14,40 +14,59 @@ const MONCASH_GATEWAY_URL =
     ? "https://moncashbutton.digicelgroup.com/Moncash-middleware/Payment/Redirect"
     : "https://sandbox.moncashbutton.digicelgroup.com/Moncash-middleware/Payment/Redirect";
 
+export function isMonCashConfigured(): boolean {
+  return Boolean(
+    clientId &&
+    clientSecret &&
+    !clientId.includes("placeholder") &&
+    !clientSecret.includes("placeholder")
+  );
+}
+
 let cachedToken: { token: string; expiresAt: number } | null = null;
 
 /**
  * Retrieves a valid OAuth token from MonCash API.
  */
 export async function getMonCashAccessToken(): Promise<string> {
+  if (!isMonCashConfigured()) {
+    throw new Error("PROVIDER_UNAVAILABLE: Le paiement MonCash est temporairement indisponible.");
+  }
+
   const now = Date.now();
   if (cachedToken && cachedToken.expiresAt > now + 60000) {
     return cachedToken.token;
   }
 
-  const authString = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
-  const response = await fetch(`${MONCASH_BASE_URL}/oauth/token`, {
-    method: "POST",
-    headers: {
-      Authorization: `Basic ${authString}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-      Accept: "application/json",
-    },
-    body: "grant_type=client_credentials",
-  });
+  try {
+    const authString = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
+    const response = await fetch(`${MONCASH_BASE_URL}/oauth/token`, {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${authString}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+        Accept: "application/json",
+      },
+      body: "grant_type=client_credentials",
+    });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`MonCash Auth Error (${response.status}): ${errorText}`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[MonCash Auth Error (${response.status})]`, errorText);
+      throw new Error(`PROVIDER_UNAVAILABLE: Erreur d'authentification MonCash (${response.status})`);
+    }
+
+    const data = await response.json();
+    cachedToken = {
+      token: data.access_token,
+      expiresAt: now + (data.expires_in || 3600) * 1000,
+    };
+
+    return data.access_token;
+  } catch (err: any) {
+    console.error("[MonCash getMonCashAccessToken Error]", err?.message || err);
+    throw new Error("PROVIDER_UNAVAILABLE: Le service MonCash est temporairement indisponible.");
   }
-
-  const data = await response.json();
-  cachedToken = {
-    token: data.access_token,
-    expiresAt: now + (data.expires_in || 3600) * 1000,
-  };
-
-  return data.access_token;
 }
 
 /**
@@ -59,39 +78,45 @@ export async function createMonCashPayment(params: {
   sourceSite: SatelliteSite;
   satelliteUserId: string;
 }): Promise<{ paymentToken: string; redirectUrl: string }> {
-  const token = await getMonCashAccessToken();
+  try {
+    const token = await getMonCashAccessToken();
 
-  const body = {
-    amount: Math.round(params.amount),
-    orderId: params.orderId,
-  };
+    const body = {
+      amount: Math.round(params.amount),
+      orderId: params.orderId,
+    };
 
-  const response = await fetch(`${MONCASH_BASE_URL}/v1/CreatePayment`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    body: JSON.stringify(body),
-  });
+    const response = await fetch(`${MONCASH_BASE_URL}/v1/CreatePayment`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(body),
+    });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`MonCash Create Payment Failed (${response.status}): ${errorText}`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[MonCash Create Payment Error (${response.status})]`, errorText);
+      throw new Error(`PROVIDER_UNAVAILABLE: Erreur MonCash (${response.status})`);
+    }
+
+    const data = await response.json();
+    const paymentToken = data.payment_token?.token || data.token;
+
+    if (!paymentToken) {
+      throw new Error("PROVIDER_UNAVAILABLE: Jeton MonCash non reçu.");
+    }
+
+    return {
+      paymentToken,
+      redirectUrl: `${MONCASH_GATEWAY_URL}?token=${paymentToken}`,
+    };
+  } catch (err: any) {
+    console.error("[createMonCashPayment Error]", err?.message || err);
+    throw new Error("PROVIDER_UNAVAILABLE: Le service MonCash est temporairement indisponible.");
   }
-
-  const data = await response.json();
-  const paymentToken = data.payment_token?.token || data.token;
-
-  if (!paymentToken) {
-    throw new Error("MonCash did not return a valid payment token");
-  }
-
-  return {
-    paymentToken,
-    redirectUrl: `${MONCASH_GATEWAY_URL}?token=${paymentToken}`,
-  };
 }
 
 /**

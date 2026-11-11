@@ -3,6 +3,11 @@ import { SatelliteSite, TransactionType } from "./types";
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY || "sk_test_placeholder";
 
+export function isStripeConfigured(): boolean {
+  const key = process.env.STRIPE_SECRET_KEY;
+  return Boolean(key && !key.includes("placeholder") && key.startsWith("sk_"));
+}
+
 export const stripe = new Stripe(stripeSecretKey, {
   apiVersion: "2024-09-30.acacia" as any,
   typescript: true,
@@ -86,16 +91,25 @@ export async function createStripeCheckoutSession(params: {
     ],
   };
 
-  const session = await stripe.checkout.sessions.create(sessionParams);
-
-  if (!session.url) {
-    throw new Error("Stripe failed to return a checkout URL");
+  if (!isStripeConfigured()) {
+    throw new Error("PROVIDER_UNAVAILABLE: Le paiement par Carte Bancaire est temporairement indisponible.");
   }
 
-  return {
-    sessionId: session.id,
-    url: session.url,
-  };
+  try {
+    const session = await stripe.checkout.sessions.create(sessionParams);
+
+    if (!session.url) {
+      throw new Error("PROVIDER_UNAVAILABLE: Impossible d'obtenir l'URL de paiement Stripe.");
+    }
+
+    return {
+      sessionId: session.id,
+      url: session.url,
+    };
+  } catch (stripeErr: any) {
+    console.error("[Stripe Checkout Session Error]", stripeErr?.message || stripeErr);
+    throw new Error("PROVIDER_UNAVAILABLE: Le paiement par Carte Bancaire est temporairement indisponible.");
+  }
 }
 
 /**

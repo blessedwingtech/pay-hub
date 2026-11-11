@@ -91,7 +91,7 @@ function DonateContent() {
       <div className="text-center max-w-2xl mx-auto mb-10">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-semibold mb-3">
           <Heart className="w-3.5 h-3.5 fill-current" />
-          BitTonik World Trust (BWT)
+          Blessed Wing Technology (BWT)
         </div>
         <h1 className="text-3xl sm:text-5xl font-extrabold text-white tracking-tight mb-4">
           Chaque contribution compte pour l&apos;avenir

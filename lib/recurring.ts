@@ -61,9 +61,160 @@ export function cleanPhoneNumber(rawPhone: string): string {
   return digits;
 }
 
+export type NotificationMessageType = "SERVICE_START" | "RENEWAL_DUE" | "GRACE_PERIOD";
+
+export interface ClientNotificationData {
+  clientName: string;
+  clientEmail?: string;
+  clientPhone?: string;
+  serviceName: string;
+  sourceSite: string;
+  amount: number | string;
+  currency: string;
+  startDate?: Date;
+  dueDate: Date;
+  invoiceNumber: string;
+  paymentUrl: string;
+  messageType?: NotificationMessageType;
+}
+
+/**
+ * Builds formatted notification messages (WhatsApp text, Email subject, Email body, mailto link)
+ * without any multi-byte surrogate characters that could cause corrupted glyphs ().
+ */
+export function buildClientNotificationMessage(params: ClientNotificationData) {
+  const config = resolveSatelliteConfig({ sourceSite: params.sourceSite });
+  const siteName = config.displayName;
+  const type: NotificationMessageType = params.messageType || "RENEWAL_DUE";
+
+  const formattedDueDate = new Intl.DateTimeFormat("fr-FR", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(new Date(params.dueDate));
+
+  const formattedStartDate = params.startDate
+    ? new Intl.DateTimeFormat("fr-FR", {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      }).format(new Date(params.startDate))
+    : formattedDueDate;
+
+  let whatsappText = "";
+  let emailSubject = "";
+  let emailBody = "";
+
+  if (type === "SERVICE_START") {
+    emailSubject = `[${params.sourceSite}] Activation de votre service ${params.serviceName} - Facture ${params.invoiceNumber}`;
+    whatsappText =
+      `*Bienvenue - Activation de Service*\n` +
+      `*${siteName}*\n\n` +
+      `Bonjour *${params.clientName}*,\n\n` +
+      `Nous vous informons que votre service *${params.serviceName}* chez *${siteName}* a débuté le *${formattedStartDate}*.\n\n` +
+      `• Service : *${params.serviceName}*\n` +
+      `• Facture : *${params.invoiceNumber}*\n` +
+      `• Montant : *${params.amount} ${params.currency}*\n\n` +
+      `Pour régler et valider votre première période en toute sécurité en 1 clic :\n` +
+      `${params.paymentUrl}\n\n` +
+      `_Modes de paiement acceptés : MonCash (Haïti HTG), Carte Bancaire, Apple Pay, Google Pay, PayPal._\n\n` +
+      `Nous vous remercions pour votre confiance.\n` +
+      `*L'équipe ${siteName}*`;
+
+    emailBody =
+      `Bonjour ${params.clientName},\n\n` +
+      `Nous avons le plaisir de vous informer que votre service "${params.serviceName}" auprès de ${siteName} a débuté le ${formattedStartDate}.\n\n` +
+      `DÉTAILS DU SERVICE & FACTURATION :\n` +
+      `- Service : ${params.serviceName}\n` +
+      `- Prestataire : ${siteName}\n` +
+      `- Facture N° : ${params.invoiceNumber}\n` +
+      `- Montant : ${params.amount} ${params.currency}\n` +
+      `- Date limite : ${formattedDueDate}\n\n` +
+      `Pour procéder au règlement sécurisé en ligne, veuillez utiliser le lien suivant :\n` +
+      `${params.paymentUrl}\n\n` +
+      `Modes de paiement disponibles :\n` +
+      `- MonCash (Haïti - Gourdes HTG)\n` +
+      `- Carte Bancaire (Visa, Mastercard, Amex, Apple Pay, Google Pay)\n` +
+      `- PayPal (Compte PayPal ou CB)\n\n` +
+      `Nous restons à votre entière disposition pour tout renseignement ou assistance.\n\n` +
+      `Bien cordialement,\n` +
+      `L'équipe ${siteName}\n` +
+      `Portail : https://pay.bittonik.com`;
+  } else if (type === "GRACE_PERIOD") {
+    emailSubject = `[URGENT] Période de grâce - Facture ${params.invoiceNumber} (${params.serviceName})`;
+    whatsappText =
+      `*Rappel Urgent - Échéance Dépassée*\n` +
+      `*${siteName}*\n\n` +
+      `Bonjour *${params.clientName}*,\n\n` +
+      `Votre facture *${params.invoiceNumber}* pour le service *${params.serviceName}* (${siteName}) était due le *${formattedDueDate}*.\n\n` +
+      `• Montant : *${params.amount} ${params.currency}*\n\n` +
+      `Votre service est actuellement en *période de grâce*. Afin d'éviter toute interruption technique, merci de régulariser votre règlement via ce lien sécurisé :\n` +
+      `${params.paymentUrl}\n\n` +
+      `_Paiement immédiat par MonCash, Carte Bancaire ou PayPal._\n\n` +
+      `Si vous avez déjà effectué votre paiement, merci d'ignorer ce message.\n\n` +
+      `*L'équipe ${siteName}*`;
+
+    emailBody =
+      `Bonjour ${params.clientName},\n\n` +
+      `Votre facture ${params.invoiceNumber} concernant le service "${params.serviceName}" chez ${siteName} est arrivée à échéance le ${formattedDueDate}.\n\n` +
+      `Le service est actuellement en période de grâce. Pour éviter toute suspension technique, merci d'effectuer la régularisation en ligne :\n\n` +
+      `${params.paymentUrl}\n\n` +
+      `- Montant dû : ${params.amount} ${params.currency}\n` +
+      `- Modes acceptés : MonCash (HTG), Carte Bancaire, Apple Pay, PayPal\n\n` +
+      `Si votre virement ou règlement a déjà été effectué, veuillez ne pas tenir compte de ce rappel.\n\n` +
+      `Cordialement,\n` +
+      `L'équipe ${siteName}`;
+  } else {
+    // RENEWAL_DUE
+    emailSubject = `[${params.sourceSite}] Rappel de renouvellement - ${params.serviceName} (Facture ${params.invoiceNumber})`;
+    whatsappText =
+      `*Rappel de Renouvellement - ${siteName}*\n\n` +
+      `Bonjour *${params.clientName}*,\n\n` +
+      `Votre abonnement / service *${params.serviceName}* arrive à échéance le *${formattedDueDate}*.\n\n` +
+      `• Facture : *${params.invoiceNumber}*\n` +
+      `• Montant à régler : *${params.amount} ${params.currency}*\n\n` +
+      `Vous pouvez effectuer votre renouvellement en toute sécurité en 1 clic via le lien suivant :\n` +
+      `${params.paymentUrl}\n\n` +
+      `_Modes de paiement acceptés : MonCash (Haïti HTG), Carte Bancaire, Apple Pay, PayPal._\n\n` +
+      `Merci pour votre confiance,\n` +
+      `*L'équipe ${siteName}*`;
+
+    emailBody =
+      `Bonjour ${params.clientName},\n\n` +
+      `Votre service "${params.serviceName}" auprès de ${siteName} arrive à échéance le ${formattedDueDate}.\n\n` +
+      `RÉSUMÉ DU RENOUVELLEMENT :\n` +
+      `- Facture : ${params.invoiceNumber}\n` +
+      `- Montant : ${params.amount} ${params.currency}\n` +
+      `- Date d'échéance : ${formattedDueDate}\n\n` +
+      `Pour renouveler votre service sans interruption, veuillez procéder au règlement via notre lien sécurisé :\n` +
+      `${params.paymentUrl}\n\n` +
+      `Modes de règlement acceptés : MonCash, Carte Bancaire, Apple Pay, Google Pay, PayPal.\n\n` +
+      `Merci pour votre fidélité,\n` +
+      `L'équipe ${siteName}\n` +
+      `https://pay.bittonik.com`;
+  }
+
+  const cleanPhone = params.clientPhone ? cleanPhoneNumber(params.clientPhone) : "";
+  const whatsappUrl = cleanPhone
+    ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(whatsappText)}`
+    : "";
+
+  const mailtoUrl = params.clientEmail
+    ? `mailto:${encodeURIComponent(params.clientEmail)}?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`
+    : "";
+
+  return {
+    whatsappText,
+    whatsappUrl,
+    emailSubject,
+    emailBody,
+    mailtoUrl,
+  };
+}
+
 /**
  * Generates an Option-A WhatsApp "Click-to-Chat" link (100% Free, Zero Meta API cost).
- * Prepares professional French copy with direct 1-click Pay-Hub payment link.
+ * Backward-compatible wrapper over buildClientNotificationMessage.
  */
 export function generateWhatsAppReminderUrl(params: {
   clientName: string;
@@ -73,48 +224,26 @@ export function generateWhatsAppReminderUrl(params: {
   amount: number | string;
   currency: string;
   dueDate: Date;
+  startDate?: Date;
   invoiceNumber: string;
   paymentUrl: string;
   isGracePeriod?: boolean;
+  messageType?: NotificationMessageType;
 }): string {
-  const cleanPhone = cleanPhoneNumber(params.clientPhone);
-  if (!cleanPhone) return "";
-
-  const config = resolveSatelliteConfig({ sourceSite: params.sourceSite });
-  const siteName = config.displayName;
-
-  const formattedDate = new Intl.DateTimeFormat("fr-FR", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  }).format(new Date(params.dueDate));
-
-  let message = "";
-
-  if (params.isGracePeriod) {
-    message = `⚠️ *Rappel Urgent - Échéance Dépassée*\n\n` +
-      `Bonjour *${params.clientName}*,\n\n` +
-      `Votre facture *${params.invoiceNumber}* pour le service *${params.serviceName}* (${siteName}) était due le *${formattedDate}*.\n\n` +
-      `💰 *Montant :* ${params.amount} ${params.currency}\n\n` +
-      `Votre service est actuellement en *période de grâce*. Afin d'éviter toute suspension d'accès, merci de régulariser votre paiement via ce lien sécurisé :\n\n` +
-      `👉 ${params.paymentUrl}\n\n` +
-      `_(Paiement instantané par MonCash, Carte Bancaire ou PayPal)_\n\n` +
-      `Si vous avez déjà effectué le règlement, veuillez ignorer ce message.\n` +
-      `Bien cordialement,\n*L'équipe ${siteName} / BitTonik*`;
-  } else {
-    message = `👋 *Rappel d'échéance - ${siteName}*\n\n` +
-      `Bonjour *${params.clientName}*,\n\n` +
-      `Votre abonnement / service *${params.serviceName}* arrive à échéance le *${formattedDate}*.\n\n` +
-      `📄 *Facture :* ${params.invoiceNumber}\n` +
-      `💰 *Montant à régler :* ${params.amount} ${params.currency}\n\n` +
-      `Vous pouvez effectuer votre renouvellement en toute sécurité en 1 clic via le lien suivant :\n\n` +
-      `👉 ${params.paymentUrl}\n\n` +
-      `_Modes de paiement acceptés : MonCash (Haïti HTG), Carte Bancaire, Apple Pay, PayPal._\n\n` +
-      `Nous restons à votre entière disposition pour toute question.\n\n` +
-      `Merci pour votre confiance,\n*L'équipe ${siteName}*`;
-  }
-
-  return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
+  const result = buildClientNotificationMessage({
+    clientName: params.clientName,
+    clientPhone: params.clientPhone,
+    serviceName: params.serviceName,
+    sourceSite: params.sourceSite,
+    amount: params.amount,
+    currency: params.currency,
+    dueDate: params.dueDate,
+    startDate: params.startDate,
+    invoiceNumber: params.invoiceNumber,
+    paymentUrl: params.paymentUrl,
+    messageType: params.messageType || (params.isGracePeriod ? "GRACE_PERIOD" : "RENEWAL_DUE"),
+  });
+  return result.whatsappUrl;
 }
 
 /**
@@ -243,7 +372,76 @@ export async function createRecurringContract(data: {
     },
   });
 
+  // Automatically generate the initial invoice so the payment link is immediately ready
+  try {
+    await createInvoiceForContract(contract.id, nextDueDate);
+  } catch (invErr) {
+    console.warn("[createRecurringContract] Warning: Initial invoice auto-creation:", invErr);
+  }
+
   return contract;
+}
+
+/**
+ * Updates an existing recurring contract.
+ */
+export async function updateRecurringContract(
+  contractId: string,
+  data: {
+    serviceName?: string;
+    serviceDescription?: string | null;
+    amount?: number;
+    currency?: string;
+    billingCycle?: BillingCycle;
+    customDays?: number | null;
+    clientName?: string;
+    clientEmail?: string;
+    clientPhone?: string | null;
+    nextDueDate?: Date;
+    status?: RecurringContractStatus;
+    gracePeriodDays?: number;
+  }
+) {
+  return await prisma.recurringContract.update({
+    where: { id: contractId },
+    data: {
+      ...(data.serviceName && { serviceName: data.serviceName }),
+      ...(data.serviceDescription !== undefined && { serviceDescription: data.serviceDescription }),
+      ...(data.amount !== undefined && { amount: data.amount }),
+      ...(data.currency && { currency: data.currency.toUpperCase() }),
+      ...(data.billingCycle && { billingCycle: data.billingCycle }),
+      ...(data.customDays !== undefined && { customDays: data.customDays }),
+      ...(data.clientName && { clientName: data.clientName }),
+      ...(data.clientEmail && { clientEmail: data.clientEmail.toLowerCase().trim() }),
+      ...(data.clientPhone !== undefined && { clientPhone: data.clientPhone }),
+      ...(data.nextDueDate && { nextDueDate: data.nextDueDate }),
+      ...(data.status && { status: data.status }),
+      ...(data.gracePeriodDays !== undefined && { gracePeriodDays: data.gracePeriodDays }),
+    },
+  });
+}
+
+/**
+ * Deletes an existing recurring contract and its unpaid invoices.
+ */
+export async function deleteRecurringContract(contractId: string) {
+  // First delete unpaid invoices linked to this contract
+  await prisma.invoice.deleteMany({
+    where: {
+      contractId,
+      status: "UNPAID",
+    },
+  });
+
+  // If there are paid invoices, unlink the contractId rather than failing
+  await prisma.invoice.updateMany({
+    where: { contractId },
+    data: { contractId: null as any },
+  }).catch(() => null);
+
+  return await prisma.recurringContract.delete({
+    where: { id: contractId },
+  });
 }
 
 /**

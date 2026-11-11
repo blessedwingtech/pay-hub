@@ -257,9 +257,12 @@ function CheckoutContent() {
             <h2 className="text-xl font-bold text-white">Sélectionnez le mode de paiement</h2>
 
             {errorMessage && (
-              <div className="p-4 rounded-xl bg-red-950/60 border border-red-800/80 flex items-start gap-3 text-red-200 text-sm">
-                <AlertCircle className="w-5 h-5 shrink-0 text-red-400 mt-0.5" />
-                <div>{errorMessage}</div>
+              <div className="p-4 rounded-xl bg-amber-950/50 border border-amber-500/50 flex items-start gap-3 text-amber-200 text-sm shadow-lg shadow-amber-950/20">
+                <AlertCircle className="w-5 h-5 shrink-0 text-amber-400 mt-0.5" />
+                <div className="space-y-0.5">
+                  <div className="font-semibold text-amber-300">Information de paiement</div>
+                  <div className="text-xs text-amber-200/90 leading-relaxed">{errorMessage}</div>
+                </div>
               </div>
             )}
 
