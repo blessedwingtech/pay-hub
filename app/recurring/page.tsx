@@ -68,12 +68,14 @@ interface Contract {
       serviceStart: NotificationBundle;
       renewalDue: NotificationBundle;
       gracePeriod: NotificationBundle;
+      paymentConfirmation?: NotificationBundle;
     };
   } | null;
 }
 
 interface Invoice {
   id: string;
+  contractId?: string;
   invoiceNumber: string;
   serviceName: string;
   sourceSite: string;
@@ -87,6 +89,12 @@ interface Invoice {
   paymentUrl: string;
   whatsappUrl: string;
   paidAt?: string;
+  notifications?: {
+    serviceStart: NotificationBundle;
+    renewalDue: NotificationBundle;
+    gracePeriod: NotificationBundle;
+    paymentConfirmation?: NotificationBundle;
+  };
 }
 
 export default function RecurringServicesPage() {
@@ -150,7 +158,9 @@ export default function RecurringServicesPage() {
     contract: Contract;
     invoice: any;
   } | null>(null);
-  const [commType, setCommType] = useState<"serviceStart" | "renewalDue" | "gracePeriod">("serviceStart");
+  const [commType, setCommType] = useState<
+    "serviceStart" | "renewalDue" | "gracePeriod" | "paymentConfirmation"
+  >("serviceStart");
   const [commChannel, setCommChannel] = useState<"whatsapp" | "email">("whatsapp");
 
   const checkAuth = async () => {
@@ -367,17 +377,72 @@ export default function RecurringServicesPage() {
     }
   };
 
-  const openCommModal = (contract: Contract, defaultType?: "serviceStart" | "renewalDue" | "gracePeriod") => {
-    if (!contract.latestUnpaidInvoice) {
+  const handleMarkPaid = async (
+    invoiceId: string,
+    clientName: string,
+    amount: number,
+    currency: string,
+    contract?: Contract
+  ) => {
+    const ok = window.confirm(
+      `Confirmer l'encaissement direct (Cash / Virement) de ${amount.toFixed(2)} ${currency} pour ${clientName} ?\n\n` +
+      `Cette action va :\n` +
+      `1. Marquer la facture comme RÉGLÉE\n` +
+      `2. Renouveler l'abonnement et calculer automatiquement la prochaine échéance\n` +
+      `3. Réactiver le service (si suspendu)\n` +
+      `4. Préparer le reçu de paiement à transmettre par Email ou WhatsApp.`
+    );
+    if (!ok) return;
+
+    try {
+      const res = await fetch("/api/recurring/invoices", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ invoiceId, action: "MARK_PAID" }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Erreur lors de l'encaissement");
+      }
+
+      await fetchData();
+
+      const matchingContract =
+        contract || contracts.find((c) => c.id === data.invoice?.contractId);
+
+      if (matchingContract) {
+        setCommModalData({
+          contract: matchingContract,
+          invoice: data.invoice,
+        });
+        setCommType("paymentConfirmation");
+      }
+    } catch (err: any) {
+      alert(err.message || "Erreur lors de l'encaissement");
+    }
+  };
+
+  const openCommModal = (
+    contract: Contract,
+    invoice?: any,
+    defaultType?: "serviceStart" | "renewalDue" | "gracePeriod" | "paymentConfirmation"
+  ) => {
+    const targetInvoice = invoice || contract.latestUnpaidInvoice;
+    if (!targetInvoice) {
       handleGenerateInvoice(contract.id);
       return;
     }
     setCommModalData({
       contract,
-      invoice: contract.latestUnpaidInvoice,
+      invoice: targetInvoice,
     });
     setCommType(
-      defaultType || (contract.status === "GRACE_PERIOD" ? "gracePeriod" : "serviceStart")
+      defaultType ||
+        (targetInvoice.status === "PAID"
+          ? "paymentConfirmation"
+          : contract.status === "GRACE_PERIOD"
+          ? "gracePeriod"
+          : "serviceStart")
     );
   };
 
@@ -740,6 +805,26 @@ export default function RecurringServicesPage() {
                             <span>Contacter</span>
                           </button>
 
+                          {/* 1-Click Cash / Direct Settlement */}
+                          {contract.latestUnpaidInvoice && (
+                            <button
+                              onClick={() =>
+                                handleMarkPaid(
+                                  contract.latestUnpaidInvoice!.id,
+                                  contract.clientName,
+                                  contract.latestUnpaidInvoice!.amount,
+                                  contract.latestUnpaidInvoice!.currency,
+                                  contract
+                                )
+                              }
+                              className="px-2.5 py-1.5 rounded-lg font-semibold text-xs text-amber-300 bg-amber-950/80 hover:bg-amber-900 border border-amber-700/60 transition flex items-center gap-1.5 shadow"
+                              title="Encaisser en cash / virement direct et renouveler l'échéance"
+                            >
+                              <DollarSign className="w-3.5 h-3.5 text-amber-400" />
+                              <span>Encaisser</span>
+                            </button>
+                          )}
+
                           {/* Quick Copy Link */}
                           {contract.latestUnpaidInvoice?.paymentUrl && (
                             <button
@@ -847,6 +932,53 @@ export default function RecurringServicesPage() {
 
                       <td className="py-4 px-4 text-right">
                         <div className="flex items-center justify-end gap-2">
+                          {inv.status !== "PAID" && (
+                            <button
+                              onClick={() =>
+                                handleMarkPaid(
+                                  inv.id,
+                                  inv.clientName,
+                                  inv.amount,
+                                  inv.currency
+                                )
+                              }
+                              className="px-2.5 py-1 rounded-lg text-xs font-semibold text-amber-300 bg-amber-950/80 hover:bg-amber-900 border border-amber-700/60 transition flex items-center gap-1 shadow"
+                              title="Encaisser en cash / règlement direct"
+                            >
+                              <DollarSign className="w-3.5 h-3.5 text-amber-400" />
+                              <span>Encaisser</span>
+                            </button>
+                          )}
+
+                          {inv.status === "PAID" && (
+                            <button
+                              onClick={() => {
+                                const parentContract =
+                                  contracts.find((c) => c.id === (inv as any).contractId) || {
+                                    id: (inv as any).contractId || inv.id,
+                                    contractNumber: "CTR-AUTO",
+                                    serviceName: inv.serviceName,
+                                    sourceSite: inv.sourceSite,
+                                    clientName: inv.clientName,
+                                    clientEmail: inv.clientEmail,
+                                    clientPhone: inv.clientPhone,
+                                    amount: inv.amount,
+                                    currency: inv.currency,
+                                    billingCycle: "MONTHLY",
+                                    nextDueDate: inv.dueDate,
+                                    status: "ACTIVE" as any,
+                                    gracePeriodDays: 3,
+                                  };
+                                openCommModal(parentContract, inv, "paymentConfirmation");
+                              }}
+                              className="px-2.5 py-1 rounded-lg text-xs font-semibold text-emerald-300 bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-700/60 transition flex items-center gap-1 shadow"
+                              title="Ouvrir le reçu de confirmation de paiement (Email / WhatsApp)"
+                            >
+                              <Share2 className="w-3.5 h-3.5 text-emerald-400" />
+                              <span>Reçu</span>
+                            </button>
+                          )}
+
                           {inv.status === "UNPAID" && inv.whatsappUrl && (
                             <a
                               href={inv.whatsappUrl}
@@ -919,7 +1051,7 @@ export default function RecurringServicesPage() {
               <label className="block text-xs font-semibold text-slate-300">
                 Type de message à transmettre :
               </label>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 <button
                   type="button"
                   onClick={() => setCommType("serviceStart")}
@@ -931,10 +1063,10 @@ export default function RecurringServicesPage() {
                 >
                   <div className="font-bold text-xs text-blue-400 flex items-center gap-1.5">
                     <Sparkles className="w-3.5 h-3.5" />
-                    <span>Début de Service</span>
+                    <span>Début Service</span>
                   </div>
                   <div className="text-[11px] text-slate-400 mt-1">
-                    Activation & facture initiale (ex: nouvel hébergement)
+                    Activation & facture initiale
                   </div>
                 </button>
 
@@ -949,10 +1081,10 @@ export default function RecurringServicesPage() {
                 >
                   <div className="font-bold text-xs text-emerald-400 flex items-center gap-1.5">
                     <Clock className="w-3.5 h-3.5" />
-                    <span>Rappel d&apos;Échéance</span>
+                    <span>Rappel</span>
                   </div>
                   <div className="text-[11px] text-slate-400 mt-1">
-                    Renouvellement standard avant la date limite
+                    Échéance à venir
                   </div>
                 </button>
 
@@ -967,10 +1099,28 @@ export default function RecurringServicesPage() {
                 >
                   <div className="font-bold text-xs text-amber-400 flex items-center gap-1.5">
                     <AlertTriangle className="w-3.5 h-3.5" />
-                    <span>Dernier Rappel</span>
+                    <span>Grâce</span>
                   </div>
                   <div className="text-[11px] text-slate-400 mt-1">
-                    Période de grâce / Alerte avant suspension
+                    Dernier rappel urgent
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setCommType("paymentConfirmation")}
+                  className={`p-3 rounded-xl border text-left transition ${
+                    commType === "paymentConfirmation"
+                      ? "border-emerald-500 bg-emerald-950/40 text-white"
+                      : "border-slate-800 bg-slate-900/60 text-slate-400 hover:border-slate-700"
+                  }`}
+                >
+                  <div className="font-bold text-xs text-emerald-400 flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Reçu Payé</span>
+                  </div>
+                  <div className="text-[11px] text-slate-400 mt-1">
+                    Confirmation & renouvellement
                   </div>
                 </button>
               </div>

@@ -97,10 +97,17 @@ export async function GET(req: NextRequest) {
           messageType: "GRACE_PERIOD",
         });
 
+        const paymentConfirmationNotif = buildClientNotificationMessage({
+          ...notifBase,
+          dueDate: contract.nextDueDate,
+          messageType: "PAYMENT_CONFIRMATION",
+        });
+
         notifications = {
           serviceStart: serviceStartNotif,
           renewalDue: renewalDueNotif,
           gracePeriod: gracePeriodNotif,
+          paymentConfirmation: paymentConfirmationNotif,
         };
 
         whatsappUrl =

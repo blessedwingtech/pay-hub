@@ -61,7 +61,11 @@ export function cleanPhoneNumber(rawPhone: string): string {
   return digits;
 }
 
-export type NotificationMessageType = "SERVICE_START" | "RENEWAL_DUE" | "GRACE_PERIOD";
+export type NotificationMessageType =
+  | "SERVICE_START"
+  | "RENEWAL_DUE"
+  | "GRACE_PERIOD"
+  | "PAYMENT_CONFIRMATION";
 
 export interface ClientNotificationData {
   clientName: string;
@@ -164,6 +168,35 @@ export function buildClientNotificationMessage(params: ClientNotificationData) {
       `Si votre virement ou règlement a déjà été effectué, veuillez ne pas tenir compte de ce rappel.\n\n` +
       `Cordialement,\n` +
       `L'équipe ${siteName}`;
+  } else if (type === "PAYMENT_CONFIRMATION") {
+    emailSubject = `[${params.sourceSite}] Confirmation de règlement - Facture ${params.invoiceNumber} (${params.serviceName})`;
+    whatsappText =
+      `*Confirmation de Règlement - ${siteName}*\n\n` +
+      `Bonjour *${params.clientName}*,\n\n` +
+      `Nous vous confirmons la bonne réception de votre paiement pour le service *${params.serviceName}*.\n\n` +
+      `• Facture : *${params.invoiceNumber}*\n` +
+      `• Montant réglé : *${params.amount} ${params.currency}*\n` +
+      `• Statut : *Réglé & Actif*\n` +
+      `• Prochaine échéance : *${formattedDueDate}*\n\n` +
+      `Votre abonnement est renouvelé avec succès sans aucune interruption.\n\n` +
+      `Merci pour votre confiance et fidélité !\n` +
+      `*L'équipe ${siteName}*`;
+
+    emailBody =
+      `Bonjour ${params.clientName},\n\n` +
+      `Nous vous confirmons la bonne réception de votre règlement de ${params.amount} ${params.currency} concernant le service "${params.serviceName}" auprès de ${siteName}.\n\n` +
+      `RÉCAPITULATIF DU RENOUVELLEMENT :\n` +
+      `- Service : ${params.serviceName}\n` +
+      `- Facture N° : ${params.invoiceNumber}\n` +
+      `- Montant réglé : ${params.amount} ${params.currency}\n` +
+      `- Mode d'encaissement : Règlement direct / Cash (Enregistré)\n` +
+      `- Statut du contrat : ACTIF\n` +
+      `- Prochaine échéance : ${formattedDueDate}\n\n` +
+      `Votre service est désormais renouvelé avec succès et demeure pleinement opérationnel sans aucune coupure.\n\n` +
+      `Nous vous remercions sincèrement pour votre confiance et demeurons à votre disposition pour toute question technique.\n\n` +
+      `Bien cordialement,\n` +
+      `L'équipe ${siteName}\n` +
+      `Portail : https://pay.bittonik.com`;
   } else {
     // RENEWAL_DUE
     emailSubject = `[${params.sourceSite}] Rappel de renouvellement - ${params.serviceName} (Facture ${params.invoiceNumber})`;
@@ -490,8 +523,9 @@ export async function createInvoiceForContract(contractId: string, customDueDate
  */
 export async function settleInvoicePayment(params: {
   invoiceId: string;
-  provider: PaymentProvider;
+  provider?: PaymentProvider | null;
   transactionId?: string;
+  notes?: string;
 }) {
   const invoice = await prisma.invoice.findUnique({
     where: { id: params.invoiceId },
@@ -514,7 +548,14 @@ export async function settleInvoicePayment(params: {
     data: {
       status: "PAID",
       paidAt,
-      paymentProvider: params.provider,
+      paymentProvider: params.provider || null,
+      metadata: {
+        ...(typeof invoice.metadata === "object" && invoice.metadata !== null
+          ? (invoice.metadata as any)
+          : {}),
+        manualSettlement: !params.provider,
+        paymentMethodNote: params.notes || "Règlement direct",
+      },
     },
   });
 
@@ -556,7 +597,7 @@ export async function settleInvoicePayment(params: {
         amount: Number(invoice.amount),
         currency: invoice.currency,
         status: "ACTIVE",
-        provider: params.provider,
+        provider: params.provider || "MANUAL_CASH",
         nextDueDate: nextDueDate.toISOString(),
         paidAt: paidAt.toISOString(),
       },
