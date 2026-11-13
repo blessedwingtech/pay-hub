@@ -88,12 +88,19 @@ export async function createBazikPayment(params: {
   try {
     const token = await getBazikAccessToken();
 
+    const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://pay.bittonik.com").replace(/\/+$/, "");
+    const webhookUrl = `${appUrl}/api/webhooks/bazik`;
+
     const payload = {
       amount: Math.round(params.amount),
       orderId: params.orderId,
       description: params.description || `Paiement ${params.sourceSite || "BWT"}`,
       returnUrl: params.returnUrl,
       cancelUrl: params.cancelUrl || params.returnUrl,
+      webhookUrl: webhookUrl,
+      webhook_url: webhookUrl,
+      callbackUrl: webhookUrl,
+      callback_url: webhookUrl,
     };
 
     // Bazik supports /moncash/token or /payments for creating charges
