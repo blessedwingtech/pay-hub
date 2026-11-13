@@ -1,4 +1,5 @@
 import { SatelliteSite } from "./types";
+import { isBazikConfigured, createBazikPayment } from "./bazik";
 
 const clientId = process.env.MONCASH_CLIENT_ID || "";
 const clientSecret = process.env.MONCASH_CLIENT_SECRET || "";
@@ -15,6 +16,7 @@ const MONCASH_GATEWAY_URL =
     : "https://sandbox.moncashbutton.digicelgroup.com/Moncash-middleware/Payment/Redirect";
 
 export function isMonCashConfigured(): boolean {
+  if (isBazikConfigured()) return true;
   return Boolean(
     clientId &&
     clientSecret &&
@@ -77,7 +79,23 @@ export async function createMonCashPayment(params: {
   orderId: string;
   sourceSite: SatelliteSite;
   satelliteUserId: string;
+  description?: string;
+  returnUrl?: string;
 }): Promise<{ paymentToken: string; redirectUrl: string }> {
+  // 1. If Bazik (approved partner gateway) is configured, prioritize Bazik
+  if (isBazikConfigured()) {
+    const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://pay.bittonik.com").replace(/\/+$/, "");
+    return await createBazikPayment({
+      amount: params.amount,
+      orderId: params.orderId,
+      sourceSite: params.sourceSite,
+      satelliteUserId: params.satelliteUserId,
+      description: params.description,
+      returnUrl: params.returnUrl || `${appUrl}/success?order_id=${params.orderId}`,
+    });
+  }
+
+  // 2. Direct fallback to Digicel MonCash if legacy credentials present
   try {
     const token = await getMonCashAccessToken();
 
