@@ -84,6 +84,8 @@ export async function createBazikPayment(params: {
   description?: string;
   returnUrl: string;
   cancelUrl?: string;
+  customerEmail?: string;
+  customerFullName?: string;
 }): Promise<{ paymentToken: string; redirectUrl: string }> {
   try {
     const token = await getBazikAccessToken();
@@ -91,20 +93,26 @@ export async function createBazikPayment(params: {
     const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://pay.bittonik.com").replace(/\/+$/, "");
     const webhookUrl = `${appUrl}/api/webhooks/bazik`;
 
+    // Split customer name into first and last
+    const nameParts = (params.customerFullName || "Client BitTonik").trim().split(/\s+/);
+    const firstName = nameParts[0] || "Client";
+    const lastName = nameParts.slice(1).join(" ") || "BitTonik";
+
+    // Exact payload required by Bazik API /moncash/token
     const payload = {
-      amount: Math.round(params.amount),
-      orderId: params.orderId,
+      gdes: Math.round(params.amount),
+      userID: BAZIK_USER_ID,
+      referenceId: params.orderId,
       description: params.description || `Paiement ${params.sourceSite || "BWT"}`,
-      returnUrl: params.returnUrl,
-      cancelUrl: params.cancelUrl || params.returnUrl,
+      successUrl: params.returnUrl,
+      errorUrl: params.cancelUrl || params.returnUrl,
       webhookUrl: webhookUrl,
-      webhook_url: webhookUrl,
-      callbackUrl: webhookUrl,
-      callback_url: webhookUrl,
+      customerFirstName: firstName,
+      customerLastName: lastName,
+      customerEmail: params.customerEmail || "contact@bittonik.com",
     };
 
-    // Bazik supports /moncash/token or /payments for creating charges
-    let response = await fetch(`${BAZIK_BASE_URL}/moncash/token`, {
+    const response = await fetch(`${BAZIK_BASE_URL}/moncash/token`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -114,26 +122,19 @@ export async function createBazikPayment(params: {
       body: JSON.stringify(payload),
     });
 
-    // Fallback to /payments if /moncash/token returns 404
-    if (response.status === 404) {
-      response = await fetch(`${BAZIK_BASE_URL}/payments`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
-    }
-
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`[Bazik Create Payment Error (${response.status})]`, errorText);
+      console.error(`[Bazik Create Payment HTTP Error (${response.status})]`, errorText);
       throw new Error(`PROVIDER_UNAVAILABLE: Erreur d'initialisation Bazik (${response.status})`);
     }
 
     const data = await response.json();
+
+    if (data.success === false || data.error) {
+      console.error("[Bazik Create Payment Error Response]", data);
+      throw new Error(`PROVIDER_UNAVAILABLE: ${data.message || data.error || "Échec d'initialisation du paiement Bazik"}`);
+    }
+
     const redirectUrl =
       data.redirectUrl ||
       data.redirect_url ||
@@ -142,10 +143,9 @@ export async function createBazikPayment(params: {
       data.checkoutUrl;
 
     const paymentToken =
-      data.paymentToken ||
-      data.token ||
-      data.payment_token ||
-      data.transactionId ||
+      data.payment?.payment_token?.token ||
+      data.orderId ||
+      data.referenceId ||
       params.orderId;
 
     if (!redirectUrl) {
@@ -158,7 +158,7 @@ export async function createBazikPayment(params: {
     };
   } catch (err: any) {
     console.error("[createBazikPayment Error]", err?.message || err);
-    throw new Error("PROVIDER_UNAVAILABLE: Le paiement MonCash via Bazik est temporairement indisponible.");
+    throw new Error(err?.message || "PROVIDER_UNAVAILABLE: Le paiement MonCash via Bazik est temporairement indisponible.");
   }
 }
 

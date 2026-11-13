@@ -81,6 +81,8 @@ export async function createMonCashPayment(params: {
   satelliteUserId: string;
   description?: string;
   returnUrl?: string;
+  customerEmail?: string;
+  customerFullName?: string;
 }): Promise<{ paymentToken: string; redirectUrl: string }> {
   // 1. If Bazik (approved partner gateway) is configured, prioritize Bazik
   if (isBazikConfigured()) {
@@ -92,6 +94,8 @@ export async function createMonCashPayment(params: {
       satelliteUserId: params.satelliteUserId,
       description: params.description,
       returnUrl: params.returnUrl || `${appUrl}/success?order_id=${params.orderId}`,
+      customerEmail: params.customerEmail,
+      customerFullName: params.customerFullName,
     });
   }
 

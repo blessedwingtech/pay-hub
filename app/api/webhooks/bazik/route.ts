@@ -43,8 +43,11 @@ export async function POST(req: NextRequest) {
       .catch((e) => console.error("[Bazik Webhook] Failed to log event:", e));
 
     const orderId =
+      payload.referenceId ||
+      payload.reference_id ||
       payload.orderId ||
       payload.order_id ||
+      payload.data?.referenceId ||
       payload.data?.orderId ||
       payload.data?.order_id ||
       payload.transactionId ||
@@ -70,7 +73,9 @@ export async function POST(req: NextRequest) {
       where: {
         OR: [
           { id: orderId },
+          { id: payload.referenceId || "" },
           { providerPaymentId: orderId },
+          { providerPaymentId: payload.orderId || "" },
           { id: payload.data?.transactionId || "" },
         ],
       },

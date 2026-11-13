@@ -200,6 +200,8 @@ export async function POST(req: NextRequest) {
         satelliteUserId: userId,
         description: description || `Paiement ${sourceSite}`,
         returnUrl: `${returnUrl}${returnUrl.includes("?") ? "&" : "?"}order_id=${transaction.id}&provider=MONCASH`,
+        customerEmail: email,
+        customerFullName: fullName,
       });
 
       checkoutUrl = moncashRes.redirectUrl;
