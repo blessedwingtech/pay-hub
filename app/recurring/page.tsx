@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Link from "next/link";
 import {
   Calendar,
   PlusCircle,
@@ -30,6 +31,9 @@ import {
   Send,
   Share2,
   Sparkles,
+  Percent,
+  Sliders,
+  TrendingUp,
 } from "lucide-react";
 
 interface NotificationBundle {
@@ -110,8 +114,30 @@ export default function RecurringServicesPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("ALL");
-  const [activeTab, setActiveTab] = useState<"contracts" | "invoices">("contracts");
+  const [activeTab, setActiveTab] = useState<"contracts" | "invoices" | "currency">("contracts");
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // Currency Management State
+  const [currencyData, setCurrencyData] = useState<{
+    liveRate: number;
+    effectiveRate: number;
+    config: {
+      manualOverride: boolean;
+      manualRate: number;
+      marginPercent: number;
+      updatedAt?: string;
+      updatedBy?: string;
+    };
+  } | null>(null);
+  const [currencyLoading, setCurrencyLoading] = useState(false);
+  const [currencySaving, setCurrencySaving] = useState(false);
+  const [currencySuccess, setCurrencySuccess] = useState<string | null>(null);
+  const [currencyError, setCurrencyError] = useState<string | null>(null);
+  const [currencyForm, setCurrencyForm] = useState({
+    manualOverride: false,
+    manualRate: "135.00",
+    marginPercent: "5.0",
+  });
 
   // Modal State: Create
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -216,6 +242,65 @@ export default function RecurringServicesPage() {
     }
   };
 
+  const fetchCurrencyData = async () => {
+    setCurrencyLoading(true);
+    try {
+      const res = await fetch("/api/admin/currency").then((r) => r.json());
+      if (res.success) {
+        setCurrencyData(res);
+        setCurrencyForm({
+          manualOverride: res.config?.manualOverride ?? false,
+          manualRate: String(res.config?.manualRate ?? "135.00"),
+          marginPercent: String(res.config?.marginPercent ?? "5.0"),
+        });
+      }
+    } catch (err) {
+      console.error("Failed to load currency settings:", err);
+    } finally {
+      setCurrencyLoading(false);
+    }
+  };
+
+  const saveCurrencyConfig = async (isReset = false) => {
+    setCurrencySaving(true);
+    setCurrencySuccess(null);
+    setCurrencyError(null);
+    try {
+      const body = isReset
+        ? { action: "reset", adminEmail: "Admin BWT" }
+        : {
+            manualOverride: currencyForm.manualOverride,
+            manualRate: parseFloat(currencyForm.manualRate),
+            marginPercent: parseFloat(currencyForm.marginPercent),
+            adminEmail: "Admin BWT",
+          };
+
+      const res = await fetch("/api/admin/currency", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        setCurrencyData(data);
+        setCurrencyForm({
+          manualOverride: data.config?.manualOverride ?? false,
+          manualRate: String(data.config?.manualRate ?? "135.00"),
+          marginPercent: String(data.config?.marginPercent ?? "5.0"),
+        });
+        setCurrencySuccess(data.message || "Paramètres enregistrés avec succès !");
+        setTimeout(() => setCurrencySuccess(null), 4000);
+      } else {
+        setCurrencyError(data.error || "Erreur de mise à jour");
+      }
+    } catch (err: any) {
+      setCurrencyError(err?.message || "Erreur de connexion");
+    } finally {
+      setCurrencySaving(false);
+    }
+  };
+
   const fetchData = async () => {
     setLoading(true);
     try {
@@ -226,6 +311,7 @@ export default function RecurringServicesPage() {
 
       if (resContracts.success) setContracts(resContracts.contracts || []);
       if (resInvoices.success) setInvoices(resInvoices.invoices || []);
+      await fetchCurrencyData();
     } catch (err) {
       console.error("Failed to load recurring services:", err);
     } finally {
@@ -691,32 +777,64 @@ export default function RecurringServicesPage() {
           >
             Factures & Liens ({invoices.length})
           </button>
+          <button
+            onClick={() => setActiveTab("currency")}
+            className={`px-5 py-2 rounded-xl text-sm font-semibold transition flex items-center gap-2 ${
+              activeTab === "currency"
+                ? "bg-amber-600 text-white shadow-md shadow-amber-500/20"
+                : "text-slate-400 hover:text-amber-400"
+            }`}
+          >
+            <span>💱 Taux HTG / MonCash</span>
+            {currencyData?.config?.manualOverride ? (
+              <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/30">
+                Fixé ({currencyData.effectiveRate} HTG)
+              </span>
+            ) : currencyData?.effectiveRate ? (
+              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-slate-800 text-slate-300">
+                {currencyData.effectiveRate} HTG
+              </span>
+            ) : null}
+          </button>
         </div>
 
         <div className="flex items-center gap-3 w-full sm:w-auto">
-          <div className="relative flex-1 sm:w-64">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Rechercher client, service, BWT..."
-              className="w-full pl-9 pr-3.5 py-2 rounded-xl bg-slate-900 border border-slate-800 text-white placeholder-slate-500 text-sm focus:outline-none focus:border-blue-500 transition"
-            />
-          </div>
+          {activeTab !== "currency" ? (
+            <>
+              <div className="relative flex-1 sm:w-64">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Rechercher client, service, BWT..."
+                  className="w-full pl-9 pr-3.5 py-2 rounded-xl bg-slate-900 border border-slate-800 text-white placeholder-slate-500 text-sm focus:outline-none focus:border-blue-500 transition"
+                />
+              </div>
 
-          {activeTab === "contracts" && (
-            <select
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
-              className="px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-white text-sm focus:outline-none focus:border-blue-500"
+              {activeTab === "contracts" && (
+                <select
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value)}
+                  className="px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-white text-sm focus:outline-none focus:border-blue-500"
+                >
+                  <option value="ALL">Tous statuts</option>
+                  <option value="ACTIVE">Actifs</option>
+                  <option value="PENDING_RENEWAL">À renouveler</option>
+                  <option value="GRACE_PERIOD">Période de grâce</option>
+                  <option value="SUSPENDED">Suspendus</option>
+                </select>
+              )}
+            </>
+          ) : (
+            <button
+              onClick={fetchCurrencyData}
+              disabled={currencyLoading}
+              className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-white text-sm font-semibold transition flex items-center gap-2"
             >
-              <option value="ALL">Tous statuts</option>
-              <option value="ACTIVE">Actifs</option>
-              <option value="PENDING_RENEWAL">À renouveler</option>
-              <option value="GRACE_PERIOD">Période de grâce</option>
-              <option value="SUSPENDED">Suspendus</option>
-            </select>
+              <RefreshCw className={`w-4 h-4 ${currencyLoading ? "animate-spin text-amber-400" : ""}`} />
+              <span>Actualiser les taux</span>
+            </button>
           )}
         </div>
       </div>
@@ -1021,6 +1139,307 @@ export default function RecurringServicesPage() {
               </table>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Currency & Exchange Rate Management Tab */}
+      {activeTab === "currency" && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          {/* Header Banner */}
+          <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-slate-800 space-y-3 bg-gradient-to-r from-slate-900/90 via-slate-900/60 to-amber-950/20">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">💱</span>
+                  <h2 className="text-xl font-bold text-white">
+                    Console de Gestion du Taux de Change (USD ↔ HTG)
+                  </h2>
+                </div>
+                <p className="text-xs sm:text-sm text-slate-400">
+                  Contrôlez en direct le cours de conversion des Gourdes haïtiennes pour l’ensemble des factures récurrentes BWT, dons et paiements MonCash.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Link
+                  href="/terms"
+                  target="_blank"
+                  className="px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-400 hover:text-amber-400 bg-slate-900 hover:bg-slate-800 border border-slate-800 transition flex items-center gap-1.5"
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  <span>Politique de Change</span>
+                </Link>
+                <button
+                  onClick={fetchCurrencyData}
+                  disabled={currencyLoading}
+                  className="px-3.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs font-semibold text-slate-300 hover:text-white transition flex items-center gap-1.5"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${currencyLoading ? "animate-spin text-amber-400" : ""}`} />
+                  <span>Actualiser</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Notification message feedback */}
+            {currencySuccess && (
+              <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2 animate-in fade-in">
+                <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+                <span>{currencySuccess}</span>
+              </div>
+            )}
+            {currencyError && (
+              <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2 animate-in fade-in">
+                <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
+                <span>{currencyError}</span>
+              </div>
+            )}
+          </div>
+
+          {/* 4 Interactive Rate Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            
+            {/* Card 1 : Live Market Rate */}
+            <div className="glass-panel p-5 rounded-2xl border border-slate-800 space-y-2 flex flex-col justify-between">
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                    Cours Officiel API
+                  </span>
+                  <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                    En direct
+                  </span>
+                </div>
+                <div className="text-2xl font-black text-white">
+                  {currencyData?.liveRate ? `${currencyData.liveRate.toFixed(2)} HTG` : "131.25 HTG"}
+                </div>
+                <div className="text-[11px] text-slate-500">
+                  Taux brut interbancaire de base (1 USD).
+                </div>
+              </div>
+              <div className="pt-2 border-t border-slate-800/80 text-[11px] text-slate-400">
+                Source : Marché international & BRH
+              </div>
+            </div>
+
+            {/* Card 2 : Safety Margin */}
+            <div className="glass-panel p-5 rounded-2xl border border-slate-800 space-y-3 flex flex-col justify-between">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-amber-400 uppercase tracking-wider flex items-center gap-1">
+                    <Percent className="w-3.5 h-3.5" /> Marge de Sécurité
+                  </span>
+                  <span className="text-xs font-bold text-amber-300">
+                    +{currencyForm.marginPercent}%
+                  </span>
+                </div>
+
+                <div className="space-y-1">
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="0"
+                    max="30"
+                    value={currencyForm.marginPercent}
+                    onChange={(e) =>
+                      setCurrencyForm({ ...currencyForm, marginPercent: e.target.value })
+                    }
+                    disabled={currencyForm.manualOverride}
+                    className="w-full px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-white text-sm focus:outline-none focus:border-amber-500 disabled:opacity-50"
+                  />
+                  <div className="flex items-center gap-1 pt-1">
+                    {["3.0", "5.0", "7.5", "10.0"].map((m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => setCurrencyForm({ ...currencyForm, marginPercent: m })}
+                        disabled={currencyForm.manualOverride}
+                        className={`flex-1 py-1 text-[10px] font-semibold rounded-lg border transition ${
+                          currencyForm.marginPercent === m
+                            ? "bg-amber-500/20 border-amber-500/40 text-amber-300"
+                            : "bg-slate-900/60 border-slate-800 text-slate-400 hover:text-white"
+                        } disabled:opacity-40`}
+                      >
+                        +{m}%
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="text-[11px] text-slate-500 leading-tight">
+                Absorbe la commission de 5% de Bazik lors du retrait MonCash.
+              </div>
+            </div>
+
+            {/* Card 3 : Manual Override */}
+            <div className={`glass-panel p-5 rounded-2xl border transition flex flex-col justify-between ${
+              currencyForm.manualOverride
+                ? "border-amber-500/50 bg-amber-950/20"
+                : "border-slate-800"
+            }`}>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                    <Sliders className="w-3.5 h-3.5 text-amber-400" /> Taux Forcé (Fixe)
+                  </span>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={currencyForm.manualOverride}
+                      onChange={(e) =>
+                        setCurrencyForm({ ...currencyForm, manualOverride: e.target.checked })
+                      }
+                      className="sr-only peer"
+                    />
+                    <div className="w-9 h-5 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500"></div>
+                  </label>
+                </div>
+
+                <div className="space-y-1">
+                  <div className="relative">
+                    <input
+                      type="number"
+                      step="0.5"
+                      min="50"
+                      max="400"
+                      value={currencyForm.manualRate}
+                      onChange={(e) =>
+                        setCurrencyForm({ ...currencyForm, manualRate: e.target.value })
+                      }
+                      disabled={!currencyForm.manualOverride}
+                      className={`w-full px-3 py-1.5 rounded-xl border text-sm font-semibold transition ${
+                        currencyForm.manualOverride
+                          ? "bg-slate-900 border-amber-500 text-amber-300 focus:outline-none"
+                          : "bg-slate-900/50 border-slate-800 text-slate-500 cursor-not-allowed"
+                      }`}
+                    />
+                    <span className="absolute right-3 top-2 text-xs text-slate-500 font-bold">
+                      HTG
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-slate-500">
+                    {currencyForm.manualOverride
+                      ? "⚠️ Le cours API est ignoré au profit de ce taux fixe."
+                      : "Désactivé (Le cours API + marge est utilisé)."}
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-slate-800/80 text-[11px] text-slate-400">
+                Utile en cas de forte volatilité à Port-au-Prince.
+              </div>
+            </div>
+
+            {/* Card 4 : Effective Applied Rate */}
+            <div className="glass-panel p-5 rounded-2xl border border-amber-500/30 bg-gradient-to-br from-amber-500/10 to-amber-950/30 flex flex-col justify-between shadow-lg shadow-amber-950/20">
+              <div className="space-y-1">
+                <div className="text-xs font-bold text-amber-400 uppercase tracking-wider">
+                  Taux Facturé au Client
+                </div>
+                <div className="text-3xl font-black text-amber-300 tracking-tight">
+                  {currencyForm.manualOverride
+                    ? `${Number(parseFloat(currencyForm.manualRate) || 135).toFixed(2)} HTG`
+                    : `${(
+                        (currencyData?.liveRate || 131.25) *
+                        (1 + (parseFloat(currencyForm.marginPercent) || 0) / 100)
+                      ).toFixed(2)} HTG`}
+                </div>
+                <div className="text-[11px] text-amber-200/70">
+                  Pour 1.00 USD demandé sur MonCash
+                </div>
+              </div>
+
+              <div className="pt-3 border-t border-amber-500/20 text-[11px] text-slate-400 space-y-0.5">
+                <div>Dernière màj : {currencyData?.config?.updatedAt ? new Date(currencyData.config.updatedAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "Récemment"}</div>
+                <div className="text-[10px] text-slate-500">Par {currencyData?.config?.updatedBy || "Admin BWT"}</div>
+              </div>
+            </div>
+
+          </div>
+
+          {/* Simulated Conversion Sandbox Table */}
+          <div className="glass-panel p-6 rounded-3xl border border-slate-800 space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4 text-amber-400" />
+                  <span>Simulateur d’Encaissement Direct (MonCash)</span>
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Aperçu des montants réels qui seront demandés aux clients pour vos forfaits BWT :
+                </p>
+              </div>
+              <span className="text-xs font-semibold text-slate-400">
+                1 USD ={" "}
+                <strong className="text-amber-400 font-bold">
+                  {currencyForm.manualOverride
+                    ? Number(parseFloat(currencyForm.manualRate) || 135).toFixed(2)
+                    : (
+                        (currencyData?.liveRate || 131.25) *
+                        (1 + (parseFloat(currencyForm.marginPercent) || 0) / 100)
+                      ).toFixed(2)}{" "}
+                  HTG
+                </strong>
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+              {[
+                { usd: 10, label: "Forfait Essentiel" },
+                { usd: 15, label: "Hébergement Web BWT" },
+                { usd: 25, label: "Maintenance & Don VIP" },
+                { usd: 100, label: "Contrat Annuel Pro" },
+              ].map((item) => {
+                const effRate = currencyForm.manualOverride
+                  ? parseFloat(currencyForm.manualRate) || 135
+                  : (currencyData?.liveRate || 131.25) * (1 + (parseFloat(currencyForm.marginPercent) || 0) / 100);
+                const htgTotal = Math.round(item.usd * effRate);
+                return (
+                  <div key={item.usd} className="p-3.5 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-1">
+                    <div className="text-[11px] text-slate-400 font-medium">{item.label}</div>
+                    <div className="text-xs text-slate-500 font-bold">${item.usd}.00 USD</div>
+                    <div className="text-base font-extrabold text-amber-400">
+                      {htgTotal.toLocaleString("fr-FR")} HTG
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Bottom Actions Bar */}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => saveCurrencyConfig(true)}
+                disabled={currencySaving}
+                className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-slate-800 text-slate-400 hover:text-white hover:bg-slate-900 transition text-xs font-semibold disabled:opacity-50"
+              >
+                Réinitialiser en Mode Automatique (+5%)
+              </button>
+
+              <div className="flex items-center gap-3 w-full sm:w-auto">
+                <button
+                  type="button"
+                  onClick={() => saveCurrencyConfig(false)}
+                  disabled={currencySaving}
+                  className="w-full sm:w-auto px-6 py-2.5 rounded-xl font-bold text-white bg-amber-600 hover:bg-amber-700 transition shadow-lg shadow-amber-500/20 disabled:opacity-50 text-sm flex items-center justify-center gap-2"
+                >
+                  {currencySaving ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      <span>Enregistrement en cours...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-4 h-4" />
+                      <span>Enregistrer les Paramètres de Change</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1726,6 +2145,21 @@ export default function RecurringServicesPage() {
           </div>
         </div>
       )}
+
+      {/* Page Footer */}
+      <footer className="pt-8 mt-12 border-t border-slate-800/80 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500">
+        <div>
+          © {new Date().getFullYear()} Blessed Wing Technology (BWT) • BitTonik Pay-Hub v2.0
+        </div>
+        <div className="flex items-center gap-4">
+          <Link href="/terms" target="_blank" className="hover:text-amber-400 transition underline underline-offset-4">
+            Conditions Générales & Politique de Change
+          </Link>
+          <Link href="/donate" className="hover:text-slate-300 transition">
+            Faire un don
+          </Link>
+        </div>
+      </footer>
     </div>
   );
 }

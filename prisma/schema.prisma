@@ -293,3 +293,12 @@ model Invoice {
   @@index([status])
   @@index([dueDate])
 }
+
+model SystemSetting {
+  key       String   @id
+  value     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([key])
+}

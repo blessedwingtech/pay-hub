@@ -1,6 +1,7 @@
 "use client";
 
 import React, { Suspense, useState, useEffect } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
   CreditCard,
@@ -407,8 +408,15 @@ function CheckoutContent() {
               )}
             </button>
 
-            <div className="text-center text-xs text-slate-500">
-              Transaction sécurisée par BitTonik Pay-Hub pour {siteConfig.displayName}.
+            <div className="text-center text-xs text-slate-500 space-y-1">
+              <div>Transaction sécurisée par BitTonik Pay-Hub pour {siteConfig.displayName}.</div>
+              <div>
+                En confirmant ce paiement, vous acceptez nos{" "}
+                <Link href="/terms" target="_blank" className="underline hover:text-amber-400">
+                  Conditions Générales & Politique de Change
+                </Link>
+                .
+              </div>
             </div>
           </form>
         </div>

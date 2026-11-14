@@ -1,6 +1,7 @@
 "use client";
 
 import React, { Suspense, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
   Heart,
@@ -306,14 +307,22 @@ function DonateContent() {
           </button>
         </form>
 
-        <div className="flex items-center justify-center gap-4 text-xs text-slate-400 pt-2">
-          <span className="flex items-center gap-1">
-            <ShieldCheck className="w-4 h-4 text-emerald-400" /> Don 100% sécurisé
-          </span>
-          <span>•</span>
-          <span className="flex items-center gap-1">
-            <Award className="w-4 h-4 text-amber-400" /> Reçu fiscal automatique
-          </span>
+        <div className="flex flex-col items-center justify-center gap-2 text-xs text-slate-400 pt-2">
+          <div className="flex items-center gap-4">
+            <span className="flex items-center gap-1">
+              <ShieldCheck className="w-4 h-4 text-emerald-400" /> Don 100% sécurisé
+            </span>
+            <span>•</span>
+            <span className="flex items-center gap-1">
+              <Award className="w-4 h-4 text-amber-400" /> Reçu fiscal automatique
+            </span>
+          </div>
+          <div>
+            Consulter les{" "}
+            <Link href="/terms" target="_blank" className="underline hover:text-amber-400">
+              Conditions Générales & Politique de Change
+            </Link>
+          </div>
         </div>
       </div>
     </div>
