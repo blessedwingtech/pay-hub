@@ -166,6 +166,7 @@ export async function POST(req: NextRequest) {
       billingCycle = "MONTHLY",
       customDays,
       startDate,
+      firstDueDate,
       gracePeriodDays = 3,
       autoDebit = false,
       preferredProvider,
@@ -184,6 +185,7 @@ export async function POST(req: NextRequest) {
       billingCycle?: BillingCycle;
       customDays?: number;
       startDate?: string;
+      firstDueDate?: string;
       gracePeriodDays?: number;
       autoDebit?: boolean;
       preferredProvider?: PaymentProvider;
@@ -216,6 +218,7 @@ export async function POST(req: NextRequest) {
       billingCycle,
       customDays,
       startDate: startDate ? new Date(startDate) : undefined,
+      firstDueDate: firstDueDate ? new Date(firstDueDate) : undefined,
       gracePeriodDays,
       autoDebit,
       preferredProvider,

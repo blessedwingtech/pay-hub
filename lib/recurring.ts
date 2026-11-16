@@ -358,6 +358,7 @@ export async function createRecurringContract(data: {
   billingCycle?: BillingCycle;
   customDays?: number;
   startDate?: Date;
+  firstDueDate?: Date;
   gracePeriodDays?: number;
   autoDebit?: boolean;
   preferredProvider?: PaymentProvider;
@@ -367,7 +368,7 @@ export async function createRecurringContract(data: {
   const contractNumber = await getNextContractNumber();
   const startDate = data.startDate || new Date();
   const billingCycle = data.billingCycle || "MONTHLY";
-  const nextDueDate = calculateNextDueDate(startDate, billingCycle, data.customDays);
+  const nextDueDate = data.firstDueDate || calculateNextDueDate(startDate, billingCycle, data.customDays);
 
   // Link or create Customer
   const customer = await prisma.customer.upsert({
@@ -416,9 +417,10 @@ export async function createRecurringContract(data: {
     },
   });
 
-  // Automatically generate the initial invoice so the payment link is immediately ready
+  // Automatically generate the initial invoice with the first due date (or start date)
   try {
-    await createInvoiceForContract(contract.id, nextDueDate);
+    const initialDueDate = data.firstDueDate || startDate;
+    await createInvoiceForContract(contract.id, initialDueDate);
   } catch (invErr) {
     console.warn("[createRecurringContract] Warning: Initial invoice auto-creation:", invErr);
   }
@@ -446,7 +448,7 @@ export async function updateRecurringContract(
     gracePeriodDays?: number;
   }
 ) {
-  return await prisma.recurringContract.update({
+  const updatedContract = await prisma.recurringContract.update({
     where: { id: contractId },
     data: {
       ...(data.serviceName && { serviceName: data.serviceName }),
@@ -463,6 +465,25 @@ export async function updateRecurringContract(
       ...(data.gracePeriodDays !== undefined && { gracePeriodDays: data.gracePeriodDays }),
     },
   });
+
+  // Automatically synchronize any existing UNPAID invoice linked to this contract!
+  await prisma.invoice.updateMany({
+    where: {
+      contractId,
+      status: "UNPAID",
+    },
+    data: {
+      ...(data.serviceName && { serviceName: data.serviceName }),
+      ...(data.amount !== undefined && { amount: data.amount }),
+      ...(data.currency && { currency: data.currency.toUpperCase() }),
+      ...(data.clientName && { clientName: data.clientName }),
+      ...(data.clientEmail && { clientEmail: data.clientEmail.toLowerCase().trim() }),
+      ...(data.clientPhone !== undefined && { clientPhone: data.clientPhone }),
+      ...(data.nextDueDate && { dueDate: data.nextDueDate }),
+    },
+  }).catch((err) => console.warn("[updateRecurringContract] Sync invoice warning:", err));
+
+  return updatedContract;
 }
 
 /**

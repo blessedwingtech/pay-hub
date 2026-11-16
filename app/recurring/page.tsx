@@ -154,6 +154,8 @@ export default function RecurringServicesPage() {
     amount: "15.00",
     currency: "USD",
     billingCycle: "MONTHLY",
+    startDate: new Date().toISOString().slice(0, 10),
+    firstDueDate: new Date().toISOString().slice(0, 10),
     gracePeriodDays: "3",
   });
 
@@ -369,6 +371,8 @@ export default function RecurringServicesPage() {
         amount: "15.00",
         currency: "USD",
         billingCycle: "MONTHLY",
+        startDate: new Date().toISOString().slice(0, 10),
+        firstDueDate: new Date().toISOString().slice(0, 10),
         gracePeriodDays: "3",
       });
       fetchData();
@@ -2053,6 +2057,32 @@ export default function RecurringServicesPage() {
                     <option value="SEMIANNUAL">Semestriel (6 mois)</option>
                     <option value="YEARLY">Annuel (1 an)</option>
                   </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Date de Début du Service
+                  </label>
+                  <input
+                    type="date"
+                    value={formData.startDate}
+                    onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-white text-sm focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Date d&apos;Échéance 1ère Facture
+                  </label>
+                  <input
+                    type="date"
+                    value={formData.firstDueDate}
+                    onChange={(e) => setFormData({ ...formData, firstDueDate: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-white text-sm focus:outline-none focus:border-blue-500"
+                  />
                 </div>
               </div>
 
