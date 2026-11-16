@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import Link from "next/link";
-import { ShieldCheck, CreditCard, HeartHandshake, UserCircle, RefreshCw } from "lucide-react";
+import { ShieldCheck, CreditCard, HeartHandshake, UserCircle, RefreshCw, Lock } from "lucide-react";
 
 export const metadata: Metadata = {
   title: "BitTonik Pay-Hub | Hub Financier Universel",
@@ -63,19 +63,32 @@ export default function RootLayout({
         {/* Footer */}
         <footer className="border-t border-slate-900 bg-slate-950 text-slate-400 text-xs py-8">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="font-semibold text-slate-300">BitTonik Pay-Hub</span>
               <span>© {new Date().getFullYear()}</span>
               <span>•</span>
-              <span>Propulsé par Stripe, PayPal & MonCash</span>
+              <span className="text-slate-500">Propulsé par MonCash, Carte Bancaire & PayPal</span>
+              <span>•</span>
+              <Link href="/terms" className="text-slate-400 hover:text-white transition underline underline-offset-2">
+                Conditions & Devises
+              </Link>
             </div>
-            <div className="flex items-center gap-4 text-slate-400">
+            <div className="flex flex-wrap items-center gap-4 text-slate-400">
               <span className="flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
                 Systèmes opérationnels (99.99%)
               </span>
               <span>•</span>
-              <span>Conforme PCI-DSS Niveau 1</span>
+              <span>Conforme PCI-DSS</span>
+              <span>•</span>
+              <Link
+                href="/recurring"
+                className="flex items-center gap-1.5 text-slate-500 hover:text-slate-300 transition"
+                title="Accès Administration des Services"
+              >
+                <Lock className="w-3.5 h-3.5" />
+                <span>Administration</span>
+              </Link>
             </div>
           </div>
         </footer>
