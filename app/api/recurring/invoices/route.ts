@@ -80,6 +80,7 @@ export async function GET(req: NextRequest) {
           ...notifBase,
           dueDate: invoice.contract?.nextDueDate || invoice.dueDate,
           messageType: "PAYMENT_CONFIRMATION",
+          provider: invoice.paymentProvider,
         }),
       };
 

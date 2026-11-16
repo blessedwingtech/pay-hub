@@ -323,6 +323,20 @@ export default function RecurringServicesPage() {
     checkAuth();
   }, []);
 
+  const formatUserFriendlyError = (err: any) => {
+    const msg = String(err?.message || err || "");
+    if (
+      msg.includes("Failed to fetch") ||
+      msg.includes("ERR_CONNECTION_TIMED_OUT") ||
+      msg.includes("timed out") ||
+      msg.includes("NetworkError") ||
+      msg.includes("Load failed")
+    ) {
+      return "Délai réseau dépassé ou micro-coupure internet. Veuillez vérifier votre connexion et cliquer à nouveau sur Enregistrer.";
+    }
+    return msg || "Erreur inconnue";
+  };
+
   const handleCreateContract = async (e: React.FormEvent) => {
     e.preventDefault();
     setCreating(true);
@@ -359,7 +373,7 @@ export default function RecurringServicesPage() {
       });
       fetchData();
     } catch (err: any) {
-      setFormError(err.message || "Erreur inconnue");
+      setFormError(formatUserFriendlyError(err));
     } finally {
       setCreating(false);
     }
@@ -417,7 +431,7 @@ export default function RecurringServicesPage() {
       setEditingContract(null);
       fetchData();
     } catch (err: any) {
-      setEditError(err.message || "Erreur inconnue");
+      setEditError(formatUserFriendlyError(err));
     } finally {
       setUpdating(false);
     }

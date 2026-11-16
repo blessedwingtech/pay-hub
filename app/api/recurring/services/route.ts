@@ -101,6 +101,7 @@ export async function GET(req: NextRequest) {
           ...notifBase,
           dueDate: contract.nextDueDate,
           messageType: "PAYMENT_CONFIRMATION",
+          provider: latestUnpaidInvoice.paymentProvider,
         });
 
         notifications = {

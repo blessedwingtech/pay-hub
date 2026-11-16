@@ -36,20 +36,6 @@ export default function RootLayout({
 
             <nav className="flex items-center gap-1 sm:gap-3 text-sm font-medium">
               <Link
-                href="/checkout?user_id=demo_user&email=demo@bittonik.com&amount=29.99&currency=USD&source_site=MEMOTONIK&type=SUBSCRIPTION&plan_id=pro-monthly&return_url=https://memotonik.bittonik.com/dashboard"
-                className="px-3 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-900 transition flex items-center gap-1.5"
-              >
-                <CreditCard className="w-4 h-4 text-blue-400" />
-                <span className="hidden md:inline">Checkout Démo</span>
-              </Link>
-              <Link
-                href="/recurring"
-                className="px-3 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-900 transition flex items-center gap-1.5"
-              >
-                <RefreshCw className="w-4 h-4 text-emerald-400" />
-                <span className="hidden md:inline">Abonnements & Services</span>
-              </Link>
-              <Link
                 href="/donate"
                 className="px-3 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-900 transition flex items-center gap-1.5"
               >

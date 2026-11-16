@@ -80,6 +80,7 @@ export interface ClientNotificationData {
   invoiceNumber: string;
   paymentUrl: string;
   messageType?: NotificationMessageType;
+  provider?: string | null;
 }
 
 /**
@@ -169,6 +170,15 @@ export function buildClientNotificationMessage(params: ClientNotificationData) {
       `Cordialement,\n` +
       `L'équipe ${siteName}`;
   } else if (type === "PAYMENT_CONFIRMATION") {
+    const paymentMethodLabel =
+      params.provider === "MONCASH"
+        ? "MonCash (Digicel / Bazik)"
+        : params.provider === "STRIPE"
+        ? "Carte Bancaire (Stripe)"
+        : params.provider === "PAYPAL"
+        ? "PayPal"
+        : "Règlement direct certifié BWT";
+
     emailSubject = `[${params.sourceSite}] Confirmation de règlement - Facture ${params.invoiceNumber} (${params.serviceName})`;
     whatsappText =
       `*Confirmation de Règlement - ${siteName}*\n\n` +
@@ -176,6 +186,7 @@ export function buildClientNotificationMessage(params: ClientNotificationData) {
       `Nous vous confirmons la bonne réception de votre paiement pour le service *${params.serviceName}*.\n\n` +
       `• Facture : *${params.invoiceNumber}*\n` +
       `• Montant réglé : *${params.amount} ${params.currency}*\n` +
+      `• Mode : *${paymentMethodLabel}*\n` +
       `• Statut : *Réglé & Actif*\n` +
       `• Prochaine échéance : *${formattedDueDate}*\n\n` +
       `Votre abonnement est renouvelé avec succès sans aucune interruption.\n\n` +
@@ -189,7 +200,7 @@ export function buildClientNotificationMessage(params: ClientNotificationData) {
       `- Service : ${params.serviceName}\n` +
       `- Facture N° : ${params.invoiceNumber}\n` +
       `- Montant réglé : ${params.amount} ${params.currency}\n` +
-      `- Mode d'encaissement : Règlement direct / Cash (Enregistré)\n` +
+      `- Mode de règlement : ${paymentMethodLabel}\n` +
       `- Statut du contrat : ACTIF\n` +
       `- Prochaine échéance : ${formattedDueDate}\n\n` +
       `Votre service est désormais renouvelé avec succès et demeure pleinement opérationnel sans aucune coupure.\n\n` +
