@@ -37,25 +37,33 @@ export function verifyAdminAuth(req: NextRequest): boolean {
     return false;
   }
 
-  // 1. Check Authorization: Bearer <key>
+  const validSessionToken = getAdminSessionToken();
+
+  // 1. Check Authorization: Bearer <key or sessionToken>
   const authHeader = req.headers.get("authorization");
   if (authHeader && authHeader.startsWith("Bearer ")) {
     const token = authHeader.replace("Bearer ", "").trim();
-    if (token === masterKey || token === process.env.PAY_HUB_WEBHOOK_SECRET?.trim()) {
+    if (
+      token === masterKey ||
+      token === process.env.PAY_HUB_WEBHOOK_SECRET?.trim() ||
+      (validSessionToken && token === validSessionToken)
+    ) {
       return true;
     }
   }
 
   // 2. Check x-admin-key header
   const xAdminKey = req.headers.get("x-admin-key");
-  if (xAdminKey && xAdminKey.trim() === masterKey) {
+  if (
+    xAdminKey &&
+    (xAdminKey.trim() === masterKey || (validSessionToken && xAdminKey.trim() === validSessionToken))
+  ) {
     return true;
   }
 
   // 3. Check Admin session cookie
   const cookie = req.cookies.get(ADMIN_COOKIE_NAME);
   if (cookie?.value) {
-    const validSessionToken = getAdminSessionToken();
     if (cookie.value === validSessionToken) {
       return true;
     }

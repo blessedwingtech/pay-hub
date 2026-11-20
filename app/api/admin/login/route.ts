@@ -29,11 +29,15 @@ export async function POST(req: NextRequest) {
     });
 
     // Set secure HTTP-only cookie (lasts 7 days)
+    const isHttps =
+      req.headers.get("x-forwarded-proto") === "https" ||
+      req.url.startsWith("https://");
+
     response.cookies.set({
       name: ADMIN_COOKIE_NAME,
       value: sessionToken,
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
+      secure: isHttps,
       sameSite: "lax",
       maxAge: 7 * 24 * 60 * 60, // 7 jours
       path: "/",

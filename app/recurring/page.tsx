@@ -191,16 +191,47 @@ export default function RecurringServicesPage() {
   >("serviceStart");
   const [commChannel, setCommChannel] = useState<"whatsapp" | "email">("whatsapp");
 
+  const getAuthHeaders = (): Record<string, string> => {
+    if (typeof window === "undefined") return {};
+    const key = localStorage.getItem("payhub_admin_key");
+    const token = localStorage.getItem("payhub_admin_token");
+    const headers: Record<string, string> = {};
+    if (key) headers["x-admin-key"] = key;
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    return headers;
+  };
+
   const checkAuth = async () => {
     try {
-      const res = await fetch("/api/admin/check").then((r) => r.json());
+      const headers = getAuthHeaders();
+      const res = await fetch("/api/admin/check", { headers }).then((r) => r.json());
       if (res.authenticated) {
         setIsAuthenticated(true);
         fetchData();
-      } else {
-        setIsAuthenticated(false);
-        setLoading(false);
+        return;
       }
+
+      // If check failed, try re-authenticating silently if key exists in localStorage
+      const storedKey = typeof window !== "undefined" ? localStorage.getItem("payhub_admin_key") : null;
+      if (storedKey) {
+        const loginRes = await fetch("/api/admin/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ key: storedKey }),
+        }).then((r) => r.json());
+
+        if (loginRes.success) {
+          if (typeof window !== "undefined" && loginRes.token) {
+            localStorage.setItem("payhub_admin_token", loginRes.token);
+          }
+          setIsAuthenticated(true);
+          fetchData();
+          return;
+        }
+      }
+
+      setIsAuthenticated(false);
+      setLoading(false);
     } catch {
       setIsAuthenticated(false);
       setLoading(false);
@@ -213,15 +244,21 @@ export default function RecurringServicesPage() {
     setAuthError(null);
 
     try {
+      const cleanKey = adminKeyInput.trim();
       const res = await fetch("/api/admin/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key: adminKeyInput }),
+        body: JSON.stringify({ key: cleanKey }),
       });
 
       const data = await res.json();
       if (!res.ok || !data.success) {
         throw new Error(data.error || "Clé d'administration invalide");
+      }
+
+      if (typeof window !== "undefined") {
+        localStorage.setItem("payhub_admin_key", cleanKey);
+        if (data.token) localStorage.setItem("payhub_admin_token", data.token);
       }
 
       setIsAuthenticated(true);
@@ -236,6 +273,10 @@ export default function RecurringServicesPage() {
 
   const handleLogout = async () => {
     try {
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("payhub_admin_key");
+        localStorage.removeItem("payhub_admin_token");
+      }
       await fetch("/api/admin/logout", { method: "POST" });
     } finally {
       setIsAuthenticated(false);
@@ -247,7 +288,7 @@ export default function RecurringServicesPage() {
   const fetchCurrencyData = async () => {
     setCurrencyLoading(true);
     try {
-      const res = await fetch("/api/admin/currency").then((r) => r.json());
+      const res = await fetch("/api/admin/currency", { headers: getAuthHeaders() }).then((r) => r.json());
       if (res.success) {
         setCurrencyData(res);
         setCurrencyForm({
@@ -279,7 +320,7 @@ export default function RecurringServicesPage() {
 
       const res = await fetch("/api/admin/currency", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
         body: JSON.stringify(body),
       });
 
@@ -306,9 +347,10 @@ export default function RecurringServicesPage() {
   const fetchData = async () => {
     setLoading(true);
     try {
+      const headers = getAuthHeaders();
       const [resContracts, resInvoices] = await Promise.all([
-        fetch("/api/recurring/services").then((r) => r.json()),
-        fetch("/api/recurring/invoices").then((r) => r.json()),
+        fetch("/api/recurring/services", { headers }).then((r) => r.json()),
+        fetch("/api/recurring/invoices", { headers }).then((r) => r.json()),
       ]);
 
       if (resContracts.success) setContracts(resContracts.contracts || []);
@@ -347,7 +389,7 @@ export default function RecurringServicesPage() {
     try {
       const res = await fetch("/api/recurring/services", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
         body: JSON.stringify({
           ...formData,
           amount: parseFloat(formData.amount),
@@ -410,7 +452,7 @@ export default function RecurringServicesPage() {
     try {
       const res = await fetch("/api/recurring/services", {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
         body: JSON.stringify({
           id: editingContract.id,
           serviceName: editFormData.serviceName,
@@ -448,6 +490,7 @@ export default function RecurringServicesPage() {
     try {
       const res = await fetch(`/api/recurring/services?id=${deletingContract.id}`, {
         method: "DELETE",
+        headers: getAuthHeaders(),
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
@@ -467,7 +510,7 @@ export default function RecurringServicesPage() {
     try {
       const res = await fetch("/api/recurring/invoices", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
         body: JSON.stringify({ contractId }),
       });
       const data = await res.json();
@@ -501,7 +544,7 @@ export default function RecurringServicesPage() {
     try {
       const res = await fetch("/api/recurring/invoices", {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
         body: JSON.stringify({ invoiceId, action: "MARK_PAID" }),
       });
       const data = await res.json();
